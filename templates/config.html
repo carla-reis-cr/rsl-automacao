@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block corpo %}
+<h1>Configurações</h1>
+<p class="sub">Salvas em <code>{{ arquivo }}</code>, fora do vault (as chaves de API não vão para as notas).</p>
+
+<form method="post" class="cartao">
+  <h2>Vault</h2>
+  <label>Pasta do vault do Obsidian
+    <input name="vault" value="{{ c.vault }}" placeholder="ex.: C:\Users\carla\Documents\MeuVault  ou  /Users/carla/Obsidian/MeuVault" required>
+  </label>
+  <label>Pasta das revisões dentro do vault
+    <input name="pasta_revisoes" value="{{ c.pasta_revisoes }}">
+  </label>
+
+  <h2>IA na triagem (Claude Code)</h2>
+  <p class="mudo">Usa o comando <code>claude</code> já instalado e logado na sua conta (plano Pro). Cada chamada consome o limite de uso do plano.</p>
+  <div class="linha">
+    <label>Comando <input name="claude_cmd" value="{{ c.claude_cmd }}"></label>
+    <label>Modelo
+      <select name="claude_modelo">
+        {% for m in ['sonnet', 'opus', 'haiku'] %}<option {{ 'selected' if c.claude_modelo==m }}>{{ m }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Registros por chamada <input type="number" min="1" max="25" name="ia_registros_por_chamada" value="{{ c.ia_registros_por_chamada }}"></label>
+  </div>
+
+  <h2>APIs das bases (experimental)</h2>
+  <p class="mudo">Deixe em branco para manter a chave atual. ACM, ScienceDirect e Wiley não têm API de busca: use exportação RIS.</p>
+  {% for k, rot, onde in [('scopus','Scopus (Elsevier) — API key','dev.elsevier.com'),
+                          ('scopus_insttoken','Scopus — Insttoken institucional (opcional)','biblioteca da universidade'),
+                          ('ieee','IEEE Xplore — API key','developer.ieee.org'),
+                          ('springer','Springer Nature — API key','dev.springernature.com'),
+                          ('wos','Web of Science Starter — API key','developer.clarivate.com')] %}
+  <div class="linha chave">
+    <label>{{ rot }} <span class="mudo">({{ onde }})</span>
+      <input type="password" name="chave_{{ k }}" placeholder="{{ '•••••••• configurada' if c.chaves[k] else 'não configurada' }}" autocomplete="off">
+    </label>
+    {% if c.chaves[k] %}<label class="check"><input type="checkbox" name="limpar_{{ k }}"> remover</label>{% endif %}
+  </div>
+  {% endfor %}
+  <div class="linha">
+    <label>Máximo de registros por busca via API <input type="number" name="api_max_registros" value="{{ c.api_max_registros }}"></label>
+    <label>E-mail para o OpenAlex (opcional, melhora o limite de uso) <input name="openalex_email" value="{{ c.openalex_email }}"></label>
+  </div>
+  <button class="botao primario">Salvar</button>
+</form>
+
+<form method="post" action="{{ url_for('testar_claude') }}" class="acoes">
+  <button class="botao">Testar o Claude Code</button>
+</form>
+{% endblock %}

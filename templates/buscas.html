@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block corpo %}
+<h1>Buscas</h1>
+<p class="sub">Strings geradas a partir do protocolo, uma por base. Ajuste no piloto e registre cada execução: por <b>arquivo RIS</b> exportado do site ou <b>via API</b>.
+{% if not pr.congelado %}<br><span class="alerta-txt">O protocolo ainda não está congelado. Congele-o no Painel antes das buscas definitivas.</span>{% endif %}</p>
+
+<div id="api-status" class="aviso info" {% if not api_status.get('ativa') %}hidden{% endif %}>Busca via API: <span></span></div>
+{% if api_status.get('msg') and not api_status.get('ativa') %}<div class="aviso ok">{{ api_status.msg }}</div>{% endif %}
+{% if api_status.get('erro') and not api_status.get('ativa') %}<div class="aviso erro">API ({{ api_status.base }}): {{ api_status.erro }}</div>{% endif %}
+
+{% for b in p.bases %}
+{% set info = BASES[b] %}{% set s = strings[b] %}
+<section class="cartao" id="base-{{ b }}">
+  <div class="cab">
+    <h2>{{ info.nome }}</h2>
+    <a href="{{ info.url }}" target="_blank" rel="noopener">abrir busca avançada ↗</a>
+  </div>
+  <p class="mudo">{{ info.campos }} · filtros no site: {{ s.filtros_no_site }}{% if s.get('personalizada') %} · <b>string personalizada</b>{% endif %}</p>
+  {% for a in s.avisos %}<p class="alerta-txt">⚠️ {{ a }}</p>{% endfor %}
+
+  <form method="post" action="{{ url_for('salvar_string', slug=pr.slug, base=b) }}">
+    <textarea name="string" rows="{{ 3 + s.strings|length * 2 }}" class="mono" id="str-{{ b }}">{{ s.strings|join('\n\n') }}</textarea>
+    <div class="acoes">
+      <button type="button" class="botao pequeno" onclick="copiar('str-{{ b }}')">Copiar</button>
+      <input name="motivo" placeholder="motivo do ajuste (vai para o histórico)">
+      <button class="botao pequeno">Salvar string</button>
+      {% if s.strings|length > 1 %}<span class="mudo">Subconsultas separadas por linha em branco.</span>{% endif %}
+    </div>
+  </form>
+
+  <details>
+    <summary>Registrar execução com arquivo RIS</summary>
+    <form method="post" action="{{ url_for('importar', slug=pr.slug) }}" enctype="multipart/form-data" class="importar">
+      <input type="hidden" name="base" value="{{ b }}">
+      <div class="linha">
+        <label>Fase <select name="fase"><option value="piloto">piloto</option><option value="definitiva">definitiva</option></select></label>
+        <label>Data da busca <input type="date" name="data" value="{{ hoje }}"></label>
+        <label>Total mostrado no site <input name="resultados_site" placeholder="ex.: 412"></label>
+      </div>
+      <label>String exata executada (confira antes de salvar) <textarea name="string" rows="3" class="mono">{{ s.strings|join('\n\n') }}</textarea></label>
+      <label>Arquivo(s) RIS — vários se a base limitou a exportação em lotes <input type="file" name="arquivos" accept=".ris,.txt" multiple required></label>
+      <label>Observações <input name="observacoes" placeholder="ex.: exportação em 2 lotes; filtro de idioma aplicado no site"></label>
+      <button class="botao primario">Registrar</button>
+    </form>
+  </details>
+
+  {% if info.api %}
+  <details>
+    <summary>Executar via API {% if not api_ok[b] %}<span class="mudo">(configure a chave em Configurações)</span>{% endif %}</summary>
+    <form method="post" action="{{ url_for('executar_api', slug=pr.slug, base=b) }}">
+      <p class="mudo">Os totais via API podem diferir da interface web; registre os dois no relato. A resposta bruta (JSON) e um RIS convertido ficam salvos com hash.</p>
+      <label>Consulta enviada à API <textarea name="string" rows="3" class="mono">{{ s.strings|join(' ') }}</textarea></label>
+      <div class="linha">
+        <label>Fase <select name="fase"><option value="piloto">piloto</option><option value="definitiva">definitiva</option></select></label>
+        <button class="botao primario" {{ 'disabled' if not api_ok[b] }}>Executar</button>
+      </div>
+    </form>
+  </details>
+  {% endif %}
+</section>
+{% endfor %}
+
+<section class="cartao" id="controle">
+  <h2>Conjunto de controle</h2>
+  <p class="mudo">Artigos que a busca precisa encontrar. Um por linha: <code>DOI | título</code> (ou só o título). O app confere cada execução e mostra quantos foram recuperados.</p>
+  <form method="post" action="{{ url_for('controle', slug=pr.slug) }}">
+    <textarea name="controle" rows="7" class="mono" placeholder="10.1016/j.xxx.2024.01.001 | Título do artigo">{{ controle_txt }}</textarea>
+    <button class="botao">Salvar e conferir</button>
+  </form>
+</section>
+
+<section class="cartao">
+  <h2>Execuções registradas</h2>
+  {% if execs %}
+  <table>
+    <tr><th>ID</th><th>Base</th><th>Fase</th><th>Data</th><th>Método</th><th>Site/API</th><th>Importados</th><th>Controle</th></tr>
+    {% for e in execs|reverse %}
+    <tr>
+      <td><a href="{{ obsidian(pr.pasta / '01 Buscas' / (pr.nome_nota_execucao(e) ~ '.md')) }}">{{ e.id }}</a></td>
+      <td>{{ e.base_nome }}</td><td><span class="tag {{ e.fase }}">{{ e.fase }}</span></td><td>{{ e.data }}</td><td>{{ e.metodo }}</td>
+      <td>{{ e.resultados_site or '—' }}</td><td>{{ e.registros }}</td>
+      <td>{{ e.controle_encontrados|length }}/{{ e.controle_total }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="mudo">Nenhuma ainda.</p>{% endif %}
+</section>
+{% endblock %}
+{% block scripts %}
+<script>acompanhar("{{ url_for('status', slug=pr.slug) }}", "api", "api-status");</script>
+{% endblock %}

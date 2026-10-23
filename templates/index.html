@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block corpo %}
+<h1>Revisões</h1>
+<p class="sub">Cada revisão é uma pasta em <code>{{ raiz }}</code> com protocolo, buscas, seleção e estudos.</p>
+
+<div class="grade">
+{% for pr in projetos %}
+  <a class="cartao link" href="{{ url_for('painel', slug=pr.slug) }}">
+    <h3>{{ pr.titulo }}</h3>
+    <p class="mudo">Protocolo v{{ pr.protocolo.get('versao', 1) }} · {{ pr.estado() }}</p>
+    <p class="mudo">{{ pr.execucoes|length }} execuções de busca · {{ pr.registros|length }} registros</p>
+  </a>
+{% else %}
+  <div class="cartao"><p>Nenhuma revisão ainda.</p></div>
+{% endfor %}
+</div>
+
+<div class="acoes">
+  <a class="botao primario" href="{{ url_for('novo') }}">Novo protocolo</a>
+  {% if not projetos|selectattr('slug', 'equalto', 'ia-educacao-empreendedora')|list %}
+  <form method="post" action="{{ url_for('exemplo') }}" class="inline">
+    <button class="botao">Criar a partir do protocolo de 19/10/2026 (IA na educação empreendedora)</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

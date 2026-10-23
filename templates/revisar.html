@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block corpo %}
+<div class="cab">
+  <h1>{{ 'Calibração (às cegas)' if modo=='calibracao' and cal.get('estado')!='avaliada' else ('Calibração' if modo=='calibracao' else 'Triagem') }}</h1>
+  <form method="get" class="inline">
+    <input type="hidden" name="modo" value="{{ modo }}">
+    <select name="filtro" onchange="this.form.submit()">
+      {% for v, rot in [('pendentes','Pendentes'),('sugestao_excluir','Pendentes que a IA sugere excluir'),('divergentes','Decididos que divergem da IA'),('todos','Todos')] %}
+      <option value="{{ v }}" {{ 'selected' if filtro==v }}>{{ rot }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</div>
+<p class="sub">{{ fila|length }} na fila{% if pos is not none %} · {{ pos + 1 }}º{% endif %}. Atalhos: <kbd>I</kbd> incluir · <kbd>E</kbd> excluir · <kbd>D</kbd> dúvida · <kbd>←</kbd> <kbd>→</kbd> navegar</p>
+
+{% if not r %}
+  <div class="cartao"><p>Nada nesta fila. 🎉</p>
+  <a class="botao" href="{{ url_for('selecao', slug=pr.slug) }}">Voltar à seleção</a></div>
+{% else %}
+<div class="revisao">
+  <article class="cartao registro">
+    <p class="mudo">{{ r.id }} · {{ r.base }} · {{ r.tipo_doc }} · {{ r.ano }}{% if r.idioma %} · {{ r.idioma }}{% endif %}{% if r.calibracao %} · <span class="tag">amostra de calibração</span>{% endif %}</p>
+    <h2>{{ r.titulo or '(sem título)' }}</h2>
+    <p class="mudo">{{ r.autores|truncate(240) }}</p>
+    <p class="mudo"><i>{{ r.veiculo }}</i>{% if r.doi %} · <a href="https://doi.org/{{ r.doi }}" target="_blank" rel="noopener">{{ r.doi }}</a>{% endif %}</p>
+    <div class="resumo">{{ r.resumo or 'Sem resumo.' }}{% if r.resumo_fonte=='openalex' %}<p class="mudo">(resumo obtido no OpenAlex)</p>{% endif %}</div>
+    {% if r.palavras_chave %}<p><b>Palavras-chave:</b> {{ r.palavras_chave }}</p>{% endif %}
+  </article>
+
+  <aside>
+    {% if mostrar_sug %}
+    <div class="cartao sugestao {{ r.sug_decisao }}">
+      <h3>Sugestão da IA: {{ ROTULO[r.sug_decisao] }}</h3>
+      {% if r.sug_criterios %}<p><b>{{ r.sug_criterios|join(', ') }}</b></p>{% endif %}
+      <p>{{ r.sug_justificativa }}</p>
+      <p class="mudo">confiança {{ r.sug_confianca }} · {{ r.sug_modelo }}</p>
+    </div>
+    {% elif r.calibracao and cal.get('estado') != 'avaliada' %}
+    <div class="cartao"><p class="mudo">Sugestão oculta: registro da amostra de calibração.</p></div>
+    {% elif not r.sug_decisao %}
+    <div class="cartao"><p class="mudo">Sem sugestão da IA para este registro.</p></div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('decidir', slug=pr.slug) }}" class="cartao decisao" id="form-decisao">
+      <input type="hidden" name="id" value="{{ r.id }}">
+      <input type="hidden" name="modo" value="{{ modo }}">
+      <input type="hidden" name="filtro" value="{{ filtro }}">
+      <input type="hidden" name="proximo" value="{{ prox or '' }}">
+      <input type="hidden" name="decisao" id="decisao" value="">
+      {% if r.dec_decisao %}<p>Decisão atual: <b>{{ ROTULO[r.dec_decisao] }}</b> {{ (r.dec_criterios or [])|join(', ') }}</p>{% endif %}
+      <h3>Critérios que justificam a exclusão</h3>
+      {% for c in p.criterios_inclusao %}{% if c.get('aplicacao','triagem') != 'auto' %}
+      <label class="check crit"><input type="checkbox" name="criterios" value="{{ c.id }}" {{ 'checked' if c.id in (r.dec_criterios or []) }}><span><b>{{ c.id }}</b> não atendido — {{ c.texto }}</span></label>
+      {% endif %}{% endfor %}
+      {% for c in p.criterios_exclusao %}{% if c.get('aplicacao','triagem') != 'auto' %}
+      <label class="check crit"><input type="checkbox" name="criterios" value="{{ c.id }}" {{ 'checked' if c.id in (r.dec_criterios or []) }}><span><b>{{ c.id }}</b> — {{ c.texto }}</span></label>
+      {% endif %}{% endfor %}
+      <label>Nota (opcional) <input name="nota" value="{{ r.dec_nota or '' }}"></label>
+      <div class="botoes-decisao">
+        <button type="button" class="botao incluir" onclick="decidir('incluir')">Incluir <kbd>I</kbd></button>
+        <button type="button" class="botao excluir" onclick="decidir('excluir')">Excluir <kbd>E</kbd></button>
+        <button type="button" class="botao duvida" onclick="decidir('duvida')">Dúvida <kbd>D</kbd></button>
+      </div>
+      <div class="nav">
+        {% if ant %}<a id="ant" href="{{ url_for('revisar', slug=pr.slug, modo=modo, filtro=filtro, id=ant) }}">← anterior</a>{% else %}<span></span>{% endif %}
+        {% if prox %}<a id="prox" href="{{ url_for('revisar', slug=pr.slug, modo=modo, filtro=filtro, id=prox) }}">próximo →</a>{% endif %}
+      </div>
+    </form>
+  </aside>
+</div>
+{% endif %}
+{% endblock %}

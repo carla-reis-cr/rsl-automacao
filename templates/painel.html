@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block corpo %}
+<h1>{{ p.titulo }}</h1>
+<p class="sub">Protocolo v{{ p.versao }} · {{ pr.estado() }} · <a href="{{ obsidian(pr.pasta / '00 Protocolo' / 'Protocolo.md') }}">abrir no Obsidian</a></p>
+
+<div class="etapas">
+  <div class="etapa {{ 'ok' if pr.congelado else ('alerta' if problemas else '') }}">
+    <h3>1 · Protocolo</h3>
+    {% if problemas %}<ul class="pend">{% for x in problemas %}<li>{{ x }}</li>{% endfor %}</ul>{% else %}<p>Completo.</p>{% endif %}
+    {% if not pr.congelado %}
+    <form method="post" action="{{ url_for('congelar', slug=pr.slug) }}">
+      <input name="motivo" placeholder="observação (opcional)">
+      <button class="botao pequeno" {{ 'disabled' if problemas }}>Congelar antes das buscas definitivas</button>
+    </form>
+    {% else %}<p class="mudo">Congelado em {{ p.congelado_em }}.</p>{% endif %}
+  </div>
+
+  {% set piloto = execs|selectattr('fase','equalto','piloto')|list %}
+  {% set defs = execs|selectattr('fase','equalto','definitiva')|list %}
+  <div class="etapa {{ 'ok' if defs and n.por_base|length >= p.bases|length else '' }}">
+    <h3>2 · Buscas</h3>
+    <p>{{ piloto|length }} piloto · {{ defs|length }} definitivas</p>
+    <p>{{ n.por_base|length }} de {{ p.bases|length }} bases com busca definitiva</p>
+    <p>Controle: {{ pr.controle|length }} artigos</p>
+    <a class="botao pequeno" href="{{ url_for('buscas', slug=pr.slug) }}">Abrir</a>
+  </div>
+
+  {% set dedup = regs|selectattr('duplicado_de', 'defined')|list %}
+  <div class="etapa {{ 'ok' if dedup else '' }}">
+    <h3>3 · Duplicatas</h3>
+    <p>{{ n.identificados }} identificados · {{ n.duplicatas }} duplicatas</p>
+    {% if regs and not dedup %}<p class="mudo">Ainda não executada.</p>{% endif %}
+  </div>
+
+  <div class="etapa {{ 'ok' if cal.get('estado')=='avaliada' else '' }}">
+    <h3>4 · Calibração</h3>
+    {% if cal.get('metricas') %}
+      <p>Kappa {{ '%.2f'|format(cal.metricas.kappa) if cal.metricas.kappa is not none else '—' }} · sensibilidade {{ '%.0f%%'|format(cal.metricas.sensibilidade*100) if cal.metricas.sensibilidade is not none else '—' }}</p>
+    {% elif cal.get('ids') %}<p>Amostra de {{ cal.n }} em triagem.</p>
+    {% else %}<p>Não preparada.</p>{% endif %}
+  </div>
+
+  <div class="etapa {{ 'ok' if n.unicos and not n.pendentes else '' }}">
+    <h3>5 · Triagem</h3>
+    <p>{{ n.triados }} de {{ n.unicos }} triados</p>
+    <p>{{ n.excluidos }} excluídos · {{ n.encaminhados }} encaminhados</p>
+    {% if ia_status.ativa %}<p class="mudo">IA trabalhando: {{ ia_status.feitos }}/{{ ia_status.total }}</p>{% endif %}
+    <a class="botao pequeno" href="{{ url_for('selecao', slug=pr.slug) }}">Abrir</a>
+  </div>
+
+  <div class="etapa">
+    <h3>6 · Leitura e qualidade</h3>
+    <p>{{ n.notas_estudo }} notas de estudo</p>
+    <p>{{ n.lc_incluir }} aprovados · {{ n.lc_excluir }} excluídos · {{ n.lc_pendente }} pendentes</p>
+    <p>{{ n.qual_ok }} incluídos na revisão</p>
+  </div>
+</div>
+
+<h2>No vault</h2>
+<ul class="links">
+  <li><a href="{{ obsidian(pr.pasta / '00 Protocolo' / 'Protocolo.md') }}">Protocolo</a> · <a href="{{ obsidian(pr.pasta / '00 Protocolo' / 'Histórico de decisões.md') }}">Histórico de decisões</a> · <a href="{{ obsidian(pr.pasta / '00 Protocolo' / 'Registro de execuções.md') }}">Registro de execuções</a></li>
+  <li><a href="{{ obsidian(pr.pasta / '01 Buscas' / 'Registro de buscas.md') }}">Registro de buscas</a> · <a href="{{ obsidian(pr.pasta / '01 Buscas' / 'Strings por base.md') }}">Strings por base</a></li>
+  <li><a href="{{ obsidian(pr.pasta / '02 Seleção' / 'PRISMA.md') }}">PRISMA</a> · <a href="{{ obsidian(pr.pasta / '02 Seleção' / 'Calibração.md') }}">Calibração</a></li>
+</ul>
+<p class="mudo">Os links abrem a nota no Obsidian (o vault precisa estar aberto no app). Pasta: <code>{{ pr.pasta }}</code></p>
+{% endblock %}

@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block corpo %}
+<h1>{{ 'Protocolo' if pr else 'Novo protocolo' }}</h1>
+<p class="sub">Preencha o essencial; o resto pode ser refinado depois. Ao salvar, o app gera <code>00 Protocolo/Protocolo.md</code> e <code>01 Buscas/Strings por base.md</code> no vault.</p>
+{% if pr and pr.congelado %}
+<div class="aviso info">Este protocolo está congelado (versão {{ p.versao }}). Qualquer alteração vira uma emenda (versão {{ p.versao + 1 }}) registrada no Histórico de decisões.</div>
+{% endif %}
+
+<form method="post" class="protocolo">
+  <section class="cartao">
+    <h2>1. Identificação</h2>
+    <label>Título do artigo <input name="titulo" value="{{ p.titulo }}" required></label>
+    {% if not pr %}<label>Nome da pasta no vault (opcional) <input name="slug" placeholder="gerado a partir do título"></label>{% endif %}
+    <label>Objetivo <textarea name="objetivo" rows="3">{{ p.objetivo }}</textarea></label>
+    <label>Cadeia lógica / foco (opcional) <input name="cadeia" value="{{ p.cadeia }}" placeholder="ex.: Competência → Evidência → Fonte de dados → Técnica de IA → Finalidade"></label>
+    <label>Diretrizes <textarea name="diretrizes" rows="2">{{ p.diretrizes }}</textarea></label>
+  </section>
+
+  <section class="cartao">
+    <h2>2. Questões de pesquisa</h2>
+    <p class="mudo">Uma por linha: <code>código | título | pergunta | tradução (opcional)</code>. Prefixos: GQ (geral), FQ (focada, vira campo de extração), SQ (estatística, respondida pelos metadados).</p>
+    <textarea name="questoes" rows="8" class="mono" placeholder="GQ | General Question | How has ... ?&#10;FQ1 | Competencies | What are ... ?&#10;SQ1 | Publications over time | How has the number ... ?">{{ f.questoes }}</textarea>
+  </section>
+
+  <section class="cartao">
+    <h2>3. String de busca</h2>
+    <p class="mudo">Um grupo por tópico. Termos: um por linha, ou cole o bloco <code>( "a" OR "b" )</code>. Os grupos são combinados com AND.</p>
+    <div id="grupos">
+    {% for g in p.grupos %}
+      <div class="grupo">
+        <label>Grupo {{ loop.index }} <input name="grupo_nome_{{ loop.index0 }}" value="{{ g.nome }}" placeholder="ex.: Entrepreneurial Education"></label>
+        <textarea name="grupo_termos_{{ loop.index0 }}" rows="6" class="mono">{{ g.termos|join('\n') }}</textarea>
+      </div>
+    {% endfor %}
+    </div>
+    <button type="button" class="botao pequeno" onclick="adicionarGrupo()">+ grupo</button>
+
+    <h3>Bases</h3>
+    <div class="checks">
+      {% for b, info in BASES.items() %}
+      <label class="check"><input type="checkbox" name="base_{{ b }}" {{ 'checked' if b in p.bases }}> {{ info.nome }}{% if info.api %} <span class="tag">API</span>{% endif %}</label>
+      {% endfor %}
+    </div>
+    <h3>Filtros</h3>
+    <div class="linha">
+      <label>Idioma <input name="idioma" value="{{ p.filtros.idioma or '' }}" placeholder="English"></label>
+      <label>Ano inicial <input name="ano_inicio" value="{{ p.filtros.ano_inicio or '' }}" placeholder="sem recorte"></label>
+      <label>Ano final <input name="ano_fim" value="{{ p.filtros.ano_fim or '' }}" placeholder="sem recorte"></label>
+    </div>
+    <div class="checks">
+      {% for t, rot in TIPOS_DOC.items() %}
+      <label class="check"><input type="checkbox" name="tipo_{{ t }}" {{ 'checked' if t in (p.filtros.tipos or []) }}> {{ rot }}</label>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="cartao">
+    <h2>4. Critérios de seleção</h2>
+    <p class="mudo">Um por linha: <code>código | texto | aplicação</code>. Aplicação (opcional): <b>triagem</b> (padrão; a IA sugere), <b>auto</b> (aplicado pelo app, ex.: duplicatas), <b>texto-completo</b> (só na leitura completa).</p>
+    <label>Inclusão <textarea name="criterios_inclusao" rows="5" class="mono" placeholder="IC1 | O estudo é empírico e primário ...">{{ f.criterios_inclusao }}</textarea></label>
+    <label>Exclusão <textarea name="criterios_exclusao" rows="6" class="mono" placeholder="EC1 | O estudo é uma revisão ...&#10;EC2 | O estudo é duplicado | auto">{{ f.criterios_exclusao }}</textarea></label>
+  </section>
+
+  <section class="cartao">
+    <h2>5. Avaliação de qualidade</h2>
+    <label>Questões (<code>código | texto</code>) <textarea name="qualidade" rows="5" class="mono">{{ f.qualidade }}</textarea></label>
+    <div class="linha">
+      <label>Pontuação <input name="pontuacao" value="{{ p.pontuacao }}"></label>
+      <label>Nota de corte <input name="nota_corte" value="{{ p.nota_corte }}" placeholder="ex.: 4"></label>
+    </div>
+  </section>
+
+  <section class="cartao">
+    <h2>6. Extração e síntese (opcional)</h2>
+    <textarea name="extracao_extra" rows="3" placeholder="ex.: As taxonomias serão construídas a partir das categorias emergentes ... comparação com o EntreComp.">{{ p.extracao_extra }}</textarea>
+  </section>
+
+  {% if pr and pr.congelado %}
+  <section class="cartao destaque">
+    <label>Motivo da emenda (obrigatório) <input name="motivo" required></label>
+  </section>
+  {% elif pr %}
+  <input type="hidden" name="motivo" value="">
+  {% endif %}
+  <button class="botao primario grande">Salvar protocolo</button>
+</form>
+{% endblock %}

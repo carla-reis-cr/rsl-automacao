@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block titulo %}RSL Automação{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header class="topo">
+  <a class="marca" href="{{ url_for('inicio') }}">RSL Automação</a>
+  {% if pr %}
+  <nav class="abas">
+    <span class="proj">{{ pr.titulo|truncate(48) }}</span>
+    <a href="{{ url_for('painel', slug=pr.slug) }}" class="{{ 'ativa' if request.endpoint=='painel' }}">Painel</a>
+    <a href="{{ url_for('editar_protocolo', slug=pr.slug) }}" class="{{ 'ativa' if request.endpoint=='editar_protocolo' }}">Protocolo</a>
+    <a href="{{ url_for('buscas', slug=pr.slug) }}" class="{{ 'ativa' if request.endpoint=='buscas' }}">Buscas</a>
+    <a href="{{ url_for('selecao', slug=pr.slug) }}" class="{{ 'ativa' if request.endpoint in ('selecao','revisar') }}">Seleção</a>
+  </nav>
+  {% endif %}
+  <a class="cfg" href="{{ url_for('configuracoes') }}">Configurações</a>
+</header>
+<main>
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% for cat, m in msgs %}<div class="aviso {{ cat }}">{{ m }}</div>{% endfor %}
+  {% endwith %}
+  {% block corpo %}{% endblock %}
+</main>
+<footer>RSL Automação {{ VERSAO }} · tudo é salvo como notas no seu vault do Obsidian</footer>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

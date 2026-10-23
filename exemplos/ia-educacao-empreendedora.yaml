@@ -1,0 +1,49 @@
+titulo: "Artificial Intelligence Applied to Entrepreneurial Education: A Systematic Literature Review and Taxonomy"
+versao: 1
+versoes: []
+diretrizes: "A revisão segue as diretrizes de Kitchenham et al. para revisões sistemáticas em computação, considerando os itens aplicáveis do checklist PRISMA 2020."
+objetivo: "Mapear como a literatura científica aborda o desenvolvimento e o acompanhamento de competências empreendedoras mediados por inteligência artificial na educação, afastando-se da visão de \"perfil estático\" para focar na evolução dinâmica."
+cadeia: "Competência Empreendedora → Evidências / Indicadores Observáveis → Fontes de Dados → Método / Técnica de IA → Finalidade de Aplicação"
+questoes:
+  - {id: GQ, tipo: GQ, titulo: General Question, pergunta: "How has Artificial Intelligence been applied in entrepreneurial education?", traducao: "Como a Inteligência Artificial tem sido aplicada na educação empreendedora?"}
+  - {id: FQ1, tipo: FQ, titulo: "Competencies (CHA)", pergunta: "What are entrepreneurial competencies (knowledge, skills, and attitudes) addressed in the studies?", traducao: "Quais são as competências empreendedoras (conhecimentos, habilidades e atitudes) abordadas nos estudos?"}
+  - {id: FQ2, tipo: FQ, titulo: "Observable Evidence / Indicators", pergunta: "What are evidence or observable indicators of these competencies used in entrepreneurial education?", traducao: "Quais são as evidências ou indicadores observáveis dessas competências utilizados na educação empreendedora?"}
+  - {id: FQ3, tipo: FQ, titulo: "Data Sources", pergunta: "What data sources are used to capture this observable evidence and these indicators?", traducao: "Quais fontes de dados são utilizadas para capturar essas evidências e indicadores observáveis?"}
+  - {id: FQ4, tipo: FQ, titulo: "AI Methods", pergunta: "What are the Artificial Intelligence architectures, methods, and techniques employed to process these data?", traducao: "Quais são as arquiteturas, métodos e técnicas de Inteligência Artificial empregados para processar esses dados?"}
+  - {id: FQ5, tipo: FQ, titulo: "Purpose", pergunta: "What are the educational purposes of these AI methods (e.g., assessment, feedback, tutoring, personalization, recommendation, monitoring)?", traducao: "Quais são as finalidades educacionais desses métodos de IA (ex.: avaliação, feedback, tutoria, personalização, recomendação, acompanhamento)?"}
+  - {id: FQ6, tipo: FQ, titulo: "Development over Time", pergunta: "How do the studies monitor learners' development over time in entrepreneurial education?", traducao: "Como os estudos acompanham o desenvolvimento dos estudantes ao longo do tempo na educação empreendedora?"}
+  - {id: FQ7, tipo: FQ, titulo: "Challenges and Research Gaps", pergunta: "What challenges, limitations, and research gaps are reported regarding the use of AI in entrepreneurship education?", traducao: "Quais desafios, limitações e lacunas de pesquisa são relatados sobre o uso de IA na educação empreendedora?"}
+  - {id: SQ1, tipo: SQ, titulo: "Publications over Time", pergunta: "How has the number of publications evolved per year?", traducao: "Como o número de publicações evoluiu ao longo dos anos?"}
+  - {id: SQ2, tipo: SQ, titulo: "Databases and Venues", pergunta: "In which databases and venues (journals and conferences) were the studies published?", traducao: "Em quais bases e veículos (periódicos e conferências) os estudos foram publicados?"}
+  - {id: SQ3, tipo: SQ, titulo: "Geographic Distribution", pergunta: "How are the studies distributed by country and region?", traducao: "Como os estudos se distribuem por país e região?"}
+grupos:
+  - nome: Entrepreneurial Education
+    termos: ["entrepreneurial competenc*", "entrepreneurial skill*", "entrepreneurial abilit*", "entrepreneurial behavio*", "entrepreneurship education", "entrepreneurial learning", "entrepreneurial education", "entrepreneurship training", "entrepreneurship learning"]
+  - nome: Artificial Intelligence
+    termos: ["artificial intelligence", "machine learning", "deep learning", "natural language processing", "NLP", "AI agent*", "agentic AI", "intelligent agent*", "LLM agent*", "large language model*", "generative agent*", "LLM", "generative AI"]
+bases: [acm, ieee, sciencedirect, springer, wiley, scopus, wos]
+filtros:
+  idioma: English
+  tipos: [article, conference, review]
+  ano_inicio: null
+  ano_fim: null
+strings_personalizadas: {}
+criterios_inclusao:
+  - {id: IC1, texto: "O estudo é empírico e primário, aplicado à educação empreendedora (ensino e desenvolvimento de competências empreendedoras)", aplicacao: triagem}
+  - {id: IC2, texto: "O estudo implementa ou avalia o uso de IA, sistemas inteligentes, adaptativos ou agênticos voltados à educação empreendedora", aplicacao: triagem}
+  - {id: IC3, texto: "O estudo está escrito em inglês", aplicacao: triagem}
+criterios_exclusao:
+  - {id: EC1, texto: "O estudo é uma revisão de literatura, revisão sistemática, mapeamento sistemático ou survey", aplicacao: triagem}
+  - {id: EC2, texto: "O estudo é duplicado", aplicacao: auto}
+  - {id: EC3, texto: "O estudo é puramente econômico ou focado exclusivamente no desempenho financeiro de empresas, sem foco no desenvolvimento das competências empreendedoras do indivíduo", aplicacao: triagem}
+  - {id: EC4, texto: "O estudo não responde a nenhuma das questões de pesquisa", aplicacao: triagem}
+  - {id: EC5, texto: "O estudo é literatura cinzenta (resumos expandidos, tutoriais, prefácios)", aplicacao: triagem}
+qualidade:
+  - {id: Q1, texto: "[proposta] O estudo descreve o contexto educacional e os participantes?"}
+  - {id: Q2, texto: "[proposta] O estudo implementa ou avalia um modelo, sistema ou abordagem baseada em IA?"}
+  - {id: Q3, texto: "[proposta] O estudo detalha os dados e o processo de coleta?"}
+  - {id: Q4, texto: "[proposta] O estudo explica e justifica as técnicas de IA empregadas?"}
+  - {id: Q5, texto: "[proposta] O estudo apresenta e discute resultados?"}
+pontuacao: "Sim = 1; Parcial = 0,5; Não = 0"
+nota_corte: ""
+extracao_extra: "Os dados extraídos constroem a Matriz de Mapeamento (Taxonomia), conectando a cadeia lógica FQ1→FQ6. Os desafios (FQ7) formam uma taxonomia de desafios. As taxonomias serão construídas a partir das categorias que emergirem dos estudos, sem categorias definidas previamente, e as competências serão comparadas com o framework EntreComp. A leitura completa segue o método de três passagens (three-pass method) de Keshav."

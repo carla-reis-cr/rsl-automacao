@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block corpo %}
+<h1>Seleção</h1>
+<p class="sub">Duplicatas → resumos → calibração → triagem assistida → leitura completa. As decisões são sempre suas; a IA só sugere.</p>
+
+<div id="ia-status" class="aviso info" {% if not ia_status.get('ativa') %}hidden{% endif %}>IA: <span></span>
+  <form method="post" action="{{ url_for('parar_ia', slug=pr.slug) }}" class="inline"><button class="botao pequeno">Parar</button></form></div>
+{% if ia_status.get('erro') and not ia_status.get('ativa') %}<div class="aviso erro">Última tarefa de IA: {{ ia_status.erro }}</div>{% endif %}
+<div id="oa-status" class="aviso info" {% if not oa_status.get('ativa') %}hidden{% endif %}>OpenAlex: <span></span></div>
+
+<section class="cartao">
+  <h2>1 · Duplicatas e resumos</h2>
+  <p>{{ info.total }} registros das buscas definitivas · {{ info.unicos }} únicos{% if not info.dedup_feita and info.total %} (deduplicação ainda não executada){% endif %}.</p>
+  <div class="acoes">
+    <form method="post" action="{{ url_for('deduplicar', slug=pr.slug) }}" class="inline"><button class="botao" {{ 'disabled' if not info.total }}>Remover duplicatas</button></form>
+    <form method="post" action="{{ url_for('resumos', slug=pr.slug) }}" class="inline"><button class="botao" {{ 'disabled' if not info.sem_resumo_com_doi }}>Completar resumos via OpenAlex ({{ info.sem_resumo_com_doi }} com DOI)</button></form>
+    <span class="mudo">{{ info.sem_resumo }} registros sem resumo</span>
+  </div>
+  <p class="mudo">Rode a deduplicação de novo sempre que registrar outra busca definitiva. Registros já decididos não são alterados.</p>
+</section>
+
+<section class="cartao">
+  <h2>2 · Calibração da IA</h2>
+  {% if not cal.get('ids') %}
+    <p>Sorteie uma amostra e trie-a <b>sem ver as sugestões</b>. Depois a IA avalia os mesmos registros e o app calcula Kappa e sensibilidade.</p>
+    <form method="post" action="{{ url_for('preparar_calibracao', slug=pr.slug) }}" class="linha">
+      <label>Tamanho da amostra <input type="number" name="n" value="{{ [100, info.unicos]|min }}" min="10"></label>
+      <label>Semente aleatória <input type="number" name="semente" value="2026"></label>
+      <button class="botao primario" {{ 'disabled' if not info.dedup_feita }}>Sortear amostra</button>
+    </form>
+    {% if not info.dedup_feita %}<p class="mudo">Remova as duplicatas antes.</p>{% endif %}
+  {% else %}
+    <p>Amostra: {{ cal.n }} registros (semente {{ cal.semente }}). Estado: <b>{{ cal.estado }}</b>.</p>
+    {% if info.cal_pendentes %}
+      <p>{{ info.cal_pendentes }} registros da amostra ainda sem a sua decisão.</p>
+      <a class="botao primario" href="{{ url_for('revisar', slug=pr.slug, modo='calibracao') }}">Triar a amostra (às cegas)</a>
+    {% else %}
+      {% if cal.get('metricas') %}
+        {% set m = cal.metricas %}
+        <div class="metricas">
+          <div><b>{{ '%.2f'|format(m.kappa) if m.kappa is not none else '—' }}</b><span>Kappa ({{ m.kappa_interpretacao }})</span></div>
+          <div><b>{{ '%.0f%%'|format(m.sensibilidade*100) if m.sensibilidade is not none else '—' }}</b><span>sensibilidade</span></div>
+          <div><b>{{ '%.0f%%'|format(m.especificidade*100) if m.especificidade is not none else '—' }}</b><span>especificidade</span></div>
+          <div><b>{{ '%.0f%%'|format(m.concordancia*100) }}</b><span>concordância</span></div>
+        </div>
+        <p class="mudo">Modelo {{ cal.modelo }} · prompt {{ cal.prompt_hash }}{% if cal.prompt_hash != hash_atual %} · <span class="alerta-txt">os critérios mudaram desde a calibração (prompt atual {{ hash_atual }}); considere recalibrar</span>{% endif %}</p>
+        <a class="botao pequeno" href="{{ url_for('revisar', slug=pr.slug, modo='calibracao', filtro='divergentes') }}">Ver divergências</a>
+        <a class="botao pequeno" href="{{ obsidian(pr.pasta / '02 Seleção' / 'Calibração.md') }}">Relatório no Obsidian</a>
+      {% else %}
+        <form method="post" action="{{ url_for('calibracao_ia', slug=pr.slug) }}"><button class="botao primario" {{ 'disabled' if ia_status.get('ativa') }}>Rodar a IA na amostra e calcular métricas</button></form>
+      {% endif %}
+    {% endif %}
+  {% endif %}
+</section>
+
+<section class="cartao">
+  <h2>3 · Triagem por título e resumo</h2>
+  <p>{{ info.triagem_pendentes }} registros pendentes (fora da amostra) · {{ info.com_sugestao }} com sugestão da IA · {{ info.sem_sugestao }} sem sugestão.</p>
+  <form method="post" action="{{ url_for('sugerir', slug=pr.slug) }}" class="linha">
+    <label>Quantos agora <input type="number" name="limite" value="" placeholder="todos" min="1"></label>
+    {% if cal.get('estado') != 'avaliada' %}
+      <label class="check"><input type="checkbox" name="sem_calibracao"> seguir sem calibração (não recomendado)</label>
+      <input name="motivo" placeholder="motivo (vai para o histórico)">
+    {% endif %}
+    <button class="botao" {{ 'disabled' if ia_status.get('ativa') or not info.sem_sugestao }}>Gerar sugestões da IA</button>
+  </form>
+  <p class="mudo">Usa o seu Claude Code: uma chamada para cada grupo de registros (tamanho do grupo em Configurações). Dá para parar e continuar depois; só os que faltam são enviados.</p>
+  <div class="acoes">
+    <a class="botao primario" href="{{ url_for('revisar', slug=pr.slug) }}">Triar pendentes</a>
+    <a class="botao" href="{{ url_for('revisar', slug=pr.slug, filtro='sugestao_excluir') }}">Pendentes que a IA sugere excluir</a>
+    <a class="botao" href="{{ url_for('revisar', slug=pr.slug, filtro='divergentes') }}">Decididos que divergem da IA</a>
+    <a class="botao" href="{{ url_for('revisar', slug=pr.slug, filtro='todos') }}">Todos</a>
+  </div>
+</section>
+
+<section class="cartao">
+  <h2>4 · Leitura completa e PRISMA</h2>
+  <p>{{ n.encaminhados }} encaminhados à leitura completa · {{ n.notas_estudo }} notas de estudo.</p>
+  <div class="acoes">
+    <form method="post" action="{{ url_for('estudos', slug=pr.slug) }}" class="inline"><button class="botao primario">Criar notas de estudo para os encaminhados</button></form>
+    <form method="post" action="{{ url_for('prisma', slug=pr.slug) }}" class="inline"><button class="botao">Atualizar PRISMA e notas</button></form>
+    <a class="botao" href="{{ url_for('exportar', slug=pr.slug, filtro='unicos') }}">RIS dos únicos (Parsifal)</a>
+    <a class="botao" href="{{ url_for('exportar', slug=pr.slug, filtro='encaminhados') }}">RIS dos encaminhados</a>
+  </div>
+  <p class="mudo">Nas notas de estudo, preencha no Obsidian <code>leitura_completa</code> (incluir/excluir), <code>motivo_exclusao</code> e a pontuação de qualidade; depois clique em "Atualizar PRISMA".</p>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+acompanhar("{{ url_for('status', slug=pr.slug) }}", "ia", "ia-status");
+acompanhar("{{ url_for('status', slug=pr.slug) }}", "resumos", "oa-status");
+</script>
+{% endblock %}
