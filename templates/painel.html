@@ -13,6 +13,7 @@
       <button class="botao pequeno" {{ 'disabled' if problemas }}>Congelar antes das buscas definitivas</button>
     </form>
     {% else %}<p class="mudo">Congelado em {{ p.congelado_em }}.</p>{% endif %}
+    <a class="botao pequeno" href="{{ url_for('latex_ver', slug=pr.slug) }}">Visualizar LaTeX</a>
   </div>
 
   {% set piloto = execs|selectattr('fase','equalto','piloto')|list %}

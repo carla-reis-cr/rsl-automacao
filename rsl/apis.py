@@ -59,12 +59,19 @@ def _scopus(query, chaves, maximo, progresso):
         h["X-ELS-Insttoken"] = chaves["scopus_insttoken"]
     avisos, paginas, regs = [], [], []
     view = "COMPLETE"
-    cursor, total = "*", None
+    cursor, total, usar_cursor = "*", None, True
     while True:
-        params = {"query": query, "cursor": cursor, "count": 25, "view": view}
+        params = {"query": query, "count": 25, "view": view}
+        params.update({"cursor": cursor} if usar_cursor else {"start": len(regs)})
         try:
             dados = _get(url, params, h)
         except ErroAPI as ex:
+            if usar_cursor and "cursor parameter is restricted" in str(ex):
+                # Chaves sem acesso institucional não podem usar cursor: pagina por 'start' (limite de 5000 da Scopus).
+                usar_cursor = False
+                maximo = min(maximo, 5000)
+                avisos.append("A chave não permite paginação por cursor; usada paginação por 'start' (máximo de 5.000 registros).")
+                continue
             if view == "COMPLETE" and ("401" in str(ex) or "403" in str(ex)):
                 view = "STANDARD"
                 avisos.append("Sem acesso à visão COMPLETE da Scopus: resumos e palavras-chave não vieram. Use 'Completar resumos'.")
@@ -87,7 +94,7 @@ def _scopus(query, chaves, maximo, progresso):
             })
         progresso(len(regs), total)
         prox = (sr.get("cursor") or {}).get("@next")
-        if not entradas or not prox or len(regs) >= min(total, maximo):
+        if not entradas or (usar_cursor and not prox) or len(regs) >= min(total, maximo):
             break
         cursor = prox
         time.sleep(0.2)

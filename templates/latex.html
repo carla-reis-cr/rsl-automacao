@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block corpo %}
+<h1>LaTeX do protocolo</h1>
+<p class="sub"><a href="{{ url_for('painel', slug=pr.slug) }}">← painel</a> · salvo em <code>00 Protocolo/LaTeX/Protocolo.tex</code></p>
+
+{% if gerado_agora %}<div class="aviso ok">LaTeX gerado agora a partir do protocolo.</div>{% endif %}
+{% if not atualizado %}
+<div class="aviso info">O protocolo mudou desde que este LaTeX foi gerado.
+  <form method="post" action="{{ url_for('latex_regenerar', slug=pr.slug) }}" style="display:inline"><button class="botao pequeno">Atualizar</button></form>
+</div>
+{% endif %}
+
+<div class="acoes">
+  <button type="button" class="botao pequeno" onclick="copiar('tex')">Copiar</button>
+  <a class="botao pequeno" href="{{ url_for('latex_protocolo', slug=pr.slug) }}">Baixar .tex</a>
+  <a class="botao pequeno primario" href="{{ url_for('pdf_protocolo', slug=pr.slug) }}">Baixar PDF</a>
+  {% if not compilador %}<span class="mudo">Para o PDF é preciso instalar um compilador LaTeX (MiKTeX). O .tex abre no Overleaf.</span>{% endif %}
+</div>
+
+<textarea id="tex" class="mono" rows="32" readonly>{{ texto }}</textarea>
+{% endblock %}

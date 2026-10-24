@@ -206,6 +206,12 @@ def renderizar(p: dict, estado: str) -> str:
     L.append("")
     f = p.get("filtros") or {}
     L.append(f"**Filtros:** {B._filtros_texto(f)}. As strings por base estão em [[Strings por base]].\n")
+    if p.get("historico_strings"):
+        L.append("**Histórico de mudanças na string**\n")
+        L.append("| Data | Motivo |\n|---|---|")
+        for h in p["historico_strings"]:
+            L.append(f"| {h.get('data', '')} | {md_escape_tabela(h.get('motivo', ''))} |")
+        L.append("")
 
     L.append("## 4. Seleção dos estudos\n")
     L.append("Serão selecionados os estudos que atenderem a todos os critérios de inclusão e a nenhum critério de exclusão.\n")

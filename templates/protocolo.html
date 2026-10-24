@@ -35,6 +35,15 @@
     </div>
     <button type="button" class="botao pequeno" onclick="adicionarGrupo()">+ grupo</button>
 
+    <h3>Histórico de mudanças na string</h3>
+    {% if p.historico_strings %}
+    <table>
+      <tr><th>Data</th><th>Motivo</th></tr>
+      {% for h in p.historico_strings %}<tr><td>{{ h.data }}</td><td>{{ h.motivo }}</td></tr>{% endfor %}
+    </table>
+    {% endif %}
+    {% if pr %}<label>Registrar mudança na string (motivo; a data de hoje é gravada ao salvar) <input name="motivo_string" placeholder="ex.: removido o termo X por excesso de ruído no piloto"></label>{% endif %}
+
     <h3>Bases</h3>
     <div class="checks">
       {% for b, info in BASES.items() %}

@@ -22,7 +22,6 @@
     <textarea name="string" rows="{{ 3 + s.strings|length * 2 }}" class="mono" id="str-{{ b }}">{{ s.strings|join('\n\n') }}</textarea>
     <div class="acoes">
       <button type="button" class="botao pequeno" onclick="copiar('str-{{ b }}')">Copiar</button>
-      <input name="motivo" placeholder="motivo do ajuste (vai para o histórico)">
       <button class="botao pequeno">Salvar string</button>
       {% if s.strings|length > 1 %}<span class="mudo">Subconsultas separadas por linha em branco.</span>{% endif %}
     </div>

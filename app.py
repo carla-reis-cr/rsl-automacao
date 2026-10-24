@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from rsl import VERSAO, apis, ia, ris  # noqa: E402
 from rsl import bases as B  # noqa: E402
 from rsl import config as C  # noqa: E402
+from rsl import latex as L  # noqa: E402
 from rsl import protocolo as P  # noqa: E402
 from rsl import selecao as S  # noqa: E402
 from rsl.projeto import Projeto, listar  # noqa: E402
@@ -149,6 +150,9 @@ def editar_protocolo(slug):
     if request.method == "POST":
         p = P.do_formulario(request.form, pr.protocolo)
         motivo = request.form.get("motivo", "").strip()
+        motivo_string = request.form.get("motivo_string", "").strip()
+        if motivo_string:
+            p["historico_strings"] = list(p.get("historico_strings") or []) + [{"data": hoje(), "motivo": motivo_string}]
         if pr.congelado and not motivo:
             flash("O protocolo está congelado: informe o motivo da emenda.", "erro")
             return render_template("protocolo.html", p=p, f=_form_protocolo(p), pr=pr)
@@ -156,6 +160,58 @@ def editar_protocolo(slug):
         flash("Protocolo salvo e atualizado no vault.", "ok")
         return redirect(url_for("painel", slug=slug))
     return render_template("protocolo.html", p=pr.protocolo, f=_form_protocolo(pr.protocolo), pr=pr)
+
+
+def _arq_tex(pr) -> Path:
+    return pr.p("protocolo") / "LaTeX" / "Protocolo.tex"
+
+
+def _gravar_tex(pr) -> str:
+    texto = L.protocolo_tex(pr.protocolo, pr.estado())
+    destino = _arq_tex(pr)
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    destino.write_text(texto, encoding="utf-8")
+    return texto
+
+
+@app.route("/p/<slug>/latex")
+def latex_ver(slug):
+    pr = projeto(slug)
+    arq = _arq_tex(pr)
+    gerado_agora = not arq.exists()
+    if gerado_agora:
+        _gravar_tex(pr)
+    texto = arq.read_text(encoding="utf-8")
+    atualizado = texto == L.protocolo_tex(pr.protocolo, pr.estado())
+    return render_template("latex.html", pr=pr, texto=texto, atualizado=atualizado, gerado_agora=gerado_agora,
+                           compilador=L.compilador())
+
+
+@app.route("/p/<slug>/latex/regenerar", methods=["POST"])
+def latex_regenerar(slug):
+    _gravar_tex(projeto(slug))
+    flash("LaTeX do protocolo atualizado.", "ok")
+    return redirect(url_for("latex_ver", slug=slug))
+
+
+@app.route("/p/<slug>/latex/protocolo")
+def latex_protocolo(slug):
+    texto = _gravar_tex(projeto(slug))
+    return Response(texto, mimetype="application/x-tex",
+                    headers={"Content-Disposition": f'attachment; filename="Protocolo-{slug}.tex"'})
+
+
+@app.route("/p/<slug>/latex/protocolo.pdf")
+def pdf_protocolo(slug):
+    pr = projeto(slug)
+    _gravar_tex(pr)
+    try:
+        pdf = L.compilar(_arq_tex(pr))
+    except RuntimeError as ex:
+        flash(str(ex), "erro")
+        return redirect(url_for("latex_ver", slug=slug))
+    return Response(pdf.read_bytes(), mimetype="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="Protocolo-{slug}.pdf"'})
 
 
 @app.route("/p/<slug>/congelar", methods=["POST"])
@@ -206,7 +262,7 @@ def salvar_string(slug, base):
         sp[base] = texto
     novo = dict(p)
     novo["strings_personalizadas"] = sp
-    motivo = request.form.get("motivo", "").strip() or f"Ajuste da string da base {B.BASES[base]['nome']}"
+    motivo = f"Ajuste da string da base {B.BASES[base]['nome']}"
     pr.salvar_protocolo(novo, motivo)
     if not pr.protocolo.get("congelado"):
         pr.decisao(f"String da {B.BASES[base]['nome']} ajustada", motivo)
