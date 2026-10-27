@@ -3,6 +3,7 @@
 Espelha as seções de `protocolo.renderizar`, mas com tabelas reais (longtable/booktabs),
 que o plugin Latex-Exporter do Obsidian não converte.
 """
+import os
 import re
 import shutil
 import subprocess
@@ -33,7 +34,7 @@ PREAMBULO = r"""\documentclass[11pt,a4paper]{article}
 
 
 def tex(s) -> str:
-    s = re.sub(r"[\\&%$#_{}~^]", lambda m: _ESC[m.group(0)], str(s or ""))
+    s = re.sub(r"[\\&%$#_{}~^]", lambda m: _ESC[m.group(0)], str(s if s is not None else ""))
     return re.sub(r'"([^"\n]*)"', r"``\1''", s)
 
 
@@ -156,21 +157,147 @@ def protocolo_tex(p: dict, estado: str) -> str:
     return "\n".join(L) + "\n"
 
 
+def _dif(e):
+    total = re.sub(r"[.,\s]", "", str(e.get("resultados_site") or ""))
+    return int(total) - e["registros"] if total.isdigit() else None
+
+
+ROTULO_FASES = {"piloto": "piloto", "definitiva": "definitivas"}
+
+
+def titulo_fases(fases) -> str:
+    return " e ".join(ROTULO_FASES[f] for f in ("piloto", "definitiva") if f in fases)
+
+
+def relatorio_buscas_tex(p: dict, execs: list, controle: list, estado: str, data: str,
+                         fases=("piloto", "definitiva")) -> str:
+    """Relatório das buscas das fases escolhidas (piloto, definitiva ou ambas), para entregar ao orientador."""
+    fases = [f for f in ("piloto", "definitiva") if f in fases] or ["piloto", "definitiva"]
+    execs = [e for e in execs if e["fase"] in fases]
+    bases = [b for b in B.ORDEM_PADRAO if b in p.get("bases", [])]
+    por_base = {b: [e for e in execs if e["base_id"] == b] for b in bases}
+    ultima = lambda b, fase: next((e for e in reversed(por_base[b]) if e["fase"] == fase), None)
+    L = [PREAMBULO, rf"\title{{{tex(p['titulo'])}\\\large Relatório das buscas ({tex(titulo_fases(fases))})}}",
+         rf"\date{{{tex(data)} --- protocolo versão {tex(p.get('versao', 1))}, {tex(estado)}}}", r"\author{}",
+         r"\begin{document}", r"\maketitle", ""]
+
+    L.append(r"\section{Resumo}")
+    contagem = ", ".join(f"{sum(1 for e in execs if e['fase'] == f)} {ROTULO_FASES[f]}" for f in fases)
+    texto = f"Este relatório cobre as buscas {tex(titulo_fases(fases))}: {len(execs)} execuções registradas ({contagem}) em {len(bases)} bases previstas no protocolo."
+    for f in fases:
+        feitas = [b for b in bases if ultima(b, f)]
+        importados = sum(ultima(b, f)["registros"] for b in feitas)
+        texto += (f" Nas buscas {ROTULO_FASES[f]}, {len(feitas)} de {len(bases)} bases têm execução, "
+                  f"somando {importados} registros importados (antes da remoção de duplicatas).")
+    L.append(texto + "\n")
+
+    def celula(e):
+        if not e:
+            return ["pendente", "--", "--"]
+        return [tex(e["data"]), tex(e.get("resultados_site") or "--"), tex(e["registros"])]
+
+    larg = 0.62 / len(fases)
+    colunas = [("Base", 0.26)]
+    for f in fases:
+        rot = "Piloto" if f == "piloto" else "Definitiva"
+        colunas += [(f"{rot}: data", larg * 0.4), ("Site/API", larg * 0.3), ("Importados", larg * 0.3)]
+    linhas = [[tex(B.BASES[b]["nome"])] + sum((celula(ultima(b, f)) for f in fases), []) for b in bases]
+    L += _tabela(colunas, linhas)
+    L.append("Quando uma fase foi executada mais de uma vez, a tabela mostra a execução mais recente; "
+             "todas estão detalhadas na seção seguinte.\n")
+
+    L.append(r"\section{Critérios das buscas}")
+    L.append(rf"\textbf{{Campos da busca:}} {tex(B.campos_texto(p))}. \textbf{{Filtros:}} {tex(B._filtros_texto(p.get('filtros') or {}))}. "
+             "Nas bases que não aceitam o filtro dentro da string, ele foi aplicado na interface do site.\n")
+    grupos = [g for g in p.get("grupos", []) if g.get("termos")]
+    if grupos:
+        L += _tabela([("Eixo", 0.25), ("Termos", 0.67)],
+                     [[tex(g["nome"]), tex(B.grupo(g["termos"]))] for g in grupos])
+    if p.get("historico_strings"):
+        L.append(r"\textbf{Mudanças na string de busca}" + "\n")
+        L += _tabela([("Data", 0.2), ("Motivo", 0.72)], [[tex(h.get("data")), tex(h.get("motivo"))] for h in p["historico_strings"]])
+
+    L.append(r"\section{Execuções por base}")
+    for b in bases:
+        L.append(rf"\subsection{{{tex(B.BASES[b]['nome'])}}}")
+        if not por_base[b]:
+            L.append(rf"\emph{{Nenhuma busca {tex(titulo_fases(fases))} registrada para esta base.}}" + "\n")
+            continue
+        for e in por_base[b]:
+            metodo = "via API" if e["metodo"] == "api" else "exportação manual"
+            L.append(rf"\textbf{{{tex(e['id'])} --- {tex(e['fase'])}}}, busca de {tex(e['data'])} ({metodo}), "
+                     f"registrada em {tex(e.get('registrado_em', ''))}, protocolo versão {tex(e.get('versao_protocolo', ''))}.\n")
+            itens = [f"Resultados informados pelo site/API: {tex(e.get('resultados_site') or 'não informado')}; "
+                     f"registros importados: {tex(e['registros'])}."]
+            d = _dif(e)
+            if d:
+                itens[0] += f" Diferença de {tex(d)} entre o total do site e o importado."
+            if e.get("controle_total"):
+                itens.append(f"Conjunto de controle: {len(e.get('controle_encontrados', []))} de {e['controle_total']} recuperados.")
+            if e.get("observacoes"):
+                itens.append(f"Observações: {tex(e['observacoes'])}")
+            itens.append("Arquivos (SHA-256): " + "; ".join(
+                rf"\texttt{{{tex(a['nome'])}}} ({tex(a['sha256'][:12])}\ldots)" for a in e.get("arquivos", [])))
+            L += _itens(itens)
+            for i, st in enumerate(e.get("strings", []), 1):
+                if len(e["strings"]) > 1:
+                    L.append(rf"\textbf{{Subconsulta {i}}}")
+                L += [r"\begin{lstlisting}", st, r"\end{lstlisting}"]
+            L.append("")
+
+    if controle:
+        L.append(r"\section{Conjunto de controle}")
+        L.append("Artigos que a busca precisa recuperar; a tabela indica em quais execuções cada um foi encontrado.\n")
+        linhas = [[tex(c["id"]), tex(c.get("titulo") or c.get("doi")),
+                   ", ".join(tex(e["id"]) for e in execs if c["id"] in e.get("controle_encontrados", [])) or "nenhuma"]
+                  for c in controle]
+        L += _tabela([("ID", 0.08), ("Artigo", 0.5), ("Encontrado em", 0.34)], linhas)
+
+    L.append(r"\section{Observações e limitações}")
+    L += _itens([
+        "As contagens do site e as do arquivo exportado podem diferir (limites de exportação em lotes e atualização da base); "
+        "quando houve diferença, ela está indicada em cada execução.",
+        "A busca via API pode retornar totais diferentes da interface web; os dois valores são registrados quando disponíveis.",
+        "A remoção de duplicatas entre bases é feita depois, na etapa de seleção; os totais acima são anteriores a ela.",
+        "Cada arquivo importado tem hash SHA-256 e o mesmo arquivo não pode ser registrado duas vezes."])
+    L.append(r"\end{document}")
+    return "\n".join(L) + "\n"
+
+
+def _pastas_miktex():
+    """Pastas padrão do MiKTeX no Windows: a instalação por usuário nem sempre entra no PATH do app."""
+    bases = [os.environ.get("LOCALAPPDATA", ""), os.environ.get("ProgramFiles", ""), os.environ.get("ProgramFiles(x86)", "")]
+    candidatos = []
+    for b in bases:
+        if b:
+            candidatos += [Path(b) / "Programs" / "MiKTeX" / "miktex" / "bin" / "x64", Path(b) / "MiKTeX" / "miktex" / "bin" / "x64"]
+    return [str(c) for c in candidatos if c.is_dir()]
+
+
 def compilador():
-    return next((c for c in ("pdflatex", "xelatex", "tectonic") if shutil.which(c)), None)
+    """Caminho do compilador LaTeX (pdflatex, xelatex ou tectonic) ou None."""
+    pastas = os.pathsep.join(_pastas_miktex() + [os.environ.get("PATH", "")])
+    for c in ("pdflatex", "xelatex", "tectonic"):
+        achado = shutil.which(c, path=pastas)
+        if achado:
+            return achado
+    return None
 
 
 def compilar(tex_path: Path) -> Path:
     """Compila o .tex no lugar (duas passadas, para as referências cruzadas) e devolve o caminho do PDF."""
     cmd = compilador()
     if not cmd:
-        raise RuntimeError("Nenhum compilador LaTeX encontrado (pdflatex, xelatex ou tectonic). "
-                           "Instale o MiKTeX (miktex.org) ou o TeX Live, reabra o app e tente de novo. "
-                           "Enquanto isso, use 'Gerar LaTeX' e compile no Overleaf.")
+        raise RuntimeError("Para gerar o PDF aqui é preciso BAIXAR E INSTALAR o MiKTeX (miktex.org) neste computador e depois "
+                           "fechar e abrir o app de novo. Se não quiser instalar nada: clique em 'baixar .tex', envie o arquivo "
+                           "ao Overleaf (overleaf.com, gratuito) e compile lá. Isso não tem relação com o Obsidian.")
     pdf = tex_path.with_suffix(".pdf")
     pdf.unlink(missing_ok=True)
-    args = [cmd, tex_path.name] if cmd == "tectonic" else [cmd, "-interaction=nonstopmode", "-halt-on-error", tex_path.name]
-    for _ in range(1 if cmd == "tectonic" else 2):
+    tectonic = Path(cmd).stem.lower() == "tectonic"
+    # No MiKTeX, --enable-installer baixa sozinho os pacotes que faltam (sem a janela "Package Installation", que travaria o app).
+    extra = ["--enable-installer"] if "miktex" in str(cmd).lower() else []
+    args = [cmd, tex_path.name] if tectonic else [cmd, *extra, "-interaction=nonstopmode", "-halt-on-error", tex_path.name]
+    for _ in range(1 if tectonic else 2):
         try:
             r = subprocess.run(args, cwd=tex_path.parent, capture_output=True, text=True, encoding="utf-8",
                                errors="replace", timeout=300)

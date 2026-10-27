@@ -152,8 +152,6 @@ def problemas(p: dict):
         out.append("Há critérios com o mesmo código.")
     if p.get("qualidade") and not str(p.get("nota_corte", "")).strip():
         out.append("Nota de corte da avaliação de qualidade não definida.")
-    if "wiley" in p.get("bases", []) and not (p.get("strings_personalizadas") or {}).get("wiley"):
-        out.append("Wiley: campo de busca ainda não definido (resumo ou todos os metadados).")
     return out
 
 

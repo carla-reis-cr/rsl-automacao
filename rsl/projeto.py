@@ -300,7 +300,9 @@ class Projeto:
         """arquivos: lista de (nome_original, bytes). registros_api: registros já normalizados (API)."""
         with self.lock:
             execs = self.execucoes
-            hashes_existentes = {a["sha256"] for e in execs for a in e.get("arquivos", []) if a["nome"].lower().endswith(EXT_REFERENCIAS)}
+            # Execuções que importaram 0 registros não bloqueiam a reimportação do mesmo arquivo (ex.: formato ainda não suportado).
+            hashes_existentes = {a["sha256"] for e in execs if e.get("registros") for a in e.get("arquivos", [])
+                                 if a["nome"].lower().endswith(EXT_REFERENCIAS)}
             num = len(execs) + 1
             eid = f"E{num:03d}"
             base_nome = B.BASES.get(base_id, {}).get("nome", base_id)

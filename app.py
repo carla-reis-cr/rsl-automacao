@@ -21,7 +21,7 @@ from rsl import latex as L  # noqa: E402
 from rsl import protocolo as P  # noqa: E402
 from rsl import selecao as S  # noqa: E402
 from rsl.projeto import Projeto, listar  # noqa: E402
-from rsl.vault import hoje  # noqa: E402
+from rsl.vault import agora, hoje  # noqa: E402
 
 AQUI = Path(__file__).parent
 app = Flask(__name__)
@@ -253,10 +253,68 @@ def buscas(slug):
         if total.isdigit() and int(total) != e["registros"]:
             diferencas[e["id"]] = int(total) - e["registros"]
     consultas_api = {b: B.consulta_api(b, p, strings[b]) for b in strings}
-    return render_template("buscas.html", pr=pr, p=p, strings=strings, consultas_api=consultas_api, execs_base=por_base, diferencas=diferencas,
+    n_fase = {f: sum(1 for e in pr.execucoes if e["fase"] == f) for f in ("piloto", "definitiva")}
+    return render_template("buscas.html", pr=pr, p=p, compilador=L.compilador(), strings=strings,
+                           relatorios=list(reversed(pr.carregar("relatorios", []))), n_fase=n_fase,
+                           titulo_fases=L.titulo_fases, consultas_api=consultas_api, execs_base=por_base, diferencas=diferencas,
                            controle={c["id"]: c for c in pr.controle}, controle_txt=controle_txt,
                            api_ok={b: apis.chave_configurada(b, c) for b in B.BASES}, hoje=hoje(),
                            api_status=_api_status.get(slug, {}))
+
+
+@app.route("/p/<slug>/relatorios", methods=["POST"])
+def gerar_relatorio(slug):
+    """Gera o relatório das buscas das fases escolhidas e guarda uma cópia no histórico (arquivos não são sobrescritos)."""
+    pr = projeto(slug)
+    fases = [f for f in ("piloto", "definitiva") if request.form.get(f"fase_{f}")]
+    if not fases:
+        flash("Marque ao menos uma fase (piloto ou definitiva) para gerar o relatório.", "erro")
+        return redirect(url_for("buscas", slug=slug) + "#relatorios")
+    execs = [e for e in pr.execucoes if e["fase"] in fases]
+    if not execs:
+        flash(f"Não há buscas {L.titulo_fases(fases)} registradas para incluir no relatório.", "erro")
+        return redirect(url_for("buscas", slug=slug) + "#relatorios")
+    historico = pr.carregar("relatorios", [])
+    rid = f"REL{len(historico) + 1:03d}"
+    pasta = pr.p("buscas") / "relatorios"
+    pasta.mkdir(parents=True, exist_ok=True)
+    base = f"{rid}_busca-{'-'.join(fases)}_{agora().replace(':', '').replace(' ', '_')}"
+    texto = L.relatorio_buscas_tex(pr.protocolo, pr.execucoes, pr.controle, pr.estado(), hoje(), fases)
+    (pasta / f"{base}.tex").write_text(texto, encoding="utf-8")
+    item = {"id": rid, "fases": fases, "gerado_em": agora(), "tex": f"{base}.tex", "pdf": None,
+            "execucoes": [e["id"] for e in execs], "versao_protocolo": pr.protocolo.get("versao", 1)}
+    try:
+        L.compilar(pasta / f"{base}.tex")
+        item["pdf"] = f"{base}.pdf"
+        flash(f"Relatório {rid} ({L.titulo_fases(fases)}) gerado, com PDF.", "ok")
+    except RuntimeError as ex:
+        flash(f"Relatório {rid} salvo em .tex, mas o PDF não foi gerado: {ex}", "erro")
+    historico.append(item)
+    pr.salvar("relatorios", historico)
+    pr.log("Relatório de buscas gerado", f"{rid}: {L.titulo_fases(fases)}; execuções {', '.join(item['execucoes'])}")
+    return redirect(url_for("buscas", slug=slug) + "#relatorios")
+
+
+@app.route("/p/<slug>/relatorios/<rid>.<formato>")
+def baixar_relatorio(slug, rid, formato):
+    pr = projeto(slug)
+    historico = pr.carregar("relatorios", [])
+    item = next((r for r in historico if r["id"] == rid), None)
+    if not item or formato not in ("tex", "pdf"):
+        abort(404)
+    pasta = pr.p("buscas") / "relatorios"
+    if formato == "pdf" and not item.get("pdf"):
+        try:
+            L.compilar(pasta / item["tex"])
+        except RuntimeError as ex:
+            flash(str(ex), "erro")
+            return redirect(url_for("buscas", slug=slug) + "#relatorios")
+        item["pdf"] = Path(item["tex"]).with_suffix(".pdf").name
+        pr.salvar("relatorios", historico)
+    arquivo = pasta / item[formato]
+    if not arquivo.exists():
+        abort(404)
+    return send_file(arquivo, as_attachment=True, download_name=f"{slug}_{arquivo.name}")
 
 
 @app.route("/p/<slug>/exportacoes/<eid>/<int:i>")

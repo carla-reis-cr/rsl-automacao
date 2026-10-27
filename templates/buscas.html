@@ -2,6 +2,7 @@
 {% block corpo %}
 <h1>Buscas</h1>
 <p class="sub">Strings geradas a partir do protocolo, uma por base. Ajuste no piloto e registre cada execução: por <b>arquivo RIS</b> exportado do site ou <b>via API</b>.
+<br>Relatório para o orientador: <a href="#relatorios">gerar relatório das buscas e ver histórico</a>.
 {% if not pr.congelado %}<br><span class="alerta-txt">O protocolo ainda não está congelado. Congele-o no Painel antes das buscas definitivas.</span>{% endif %}</p>
 
 <div id="api-status" class="aviso info" {% if not api_status.get('ativa') %}hidden{% endif %}>Busca via API: <span></span></div>
@@ -121,6 +122,37 @@
     <textarea name="controle" rows="7" class="mono" placeholder="10.1016/j.xxx.2024.01.001 | Título do artigo">{{ controle_txt }}</textarea>
     <button class="botao">Salvar e conferir</button>
   </form>
+</section>
+
+<section class="cartao" id="relatorios">
+  <h2>Relatório das buscas</h2>
+  <p class="mudo">Gera o relatório para o orientador com as strings, os totais e os hashes das execuções das fases marcadas.
+    Cada geração fica guardada no histórico abaixo e não é sobrescrita.</p>
+  <form method="post" action="{{ url_for('gerar_relatorio', slug=pr.slug) }}">
+    <div class="checks">
+      <label class="check"><input type="checkbox" name="fase_piloto" {{ 'checked' if n_fase.piloto }} {{ 'disabled' if not n_fase.piloto }}> Buscas piloto ({{ n_fase.piloto }} execuções)</label>
+      <label class="check"><input type="checkbox" name="fase_definitiva" {{ 'checked' if n_fase.definitiva }} {{ 'disabled' if not n_fase.definitiva }}> Buscas definitivas ({{ n_fase.definitiva }} execuções)</label>
+    </div>
+    <button class="botao primario" {{ 'disabled' if not (n_fase.piloto or n_fase.definitiva) }}>Gerar relatório</button>
+  </form>
+  {% if not compilador %}<p class="alerta-txt">⚠️ O PDF só sai aqui se você baixar e instalar o MiKTeX (miktex.org) e reabrir o app. Sem instalar: baixe o .tex e compile no Overleaf (overleaf.com).</p>{% endif %}
+
+  <h3>Histórico de relatórios ({{ relatorios|length }})</h3>
+  {% if relatorios %}
+  <table>
+    <tr><th>ID</th><th>Gerado em</th><th>Fases</th><th>Execuções incluídas</th><th>Protocolo</th><th>Arquivos</th></tr>
+    {% for r in relatorios %}
+    <tr>
+      <td>{{ r.id }}</td><td>{{ r.gerado_em }}</td><td>{{ titulo_fases(r.fases) }}</td>
+      <td>{{ r.execucoes|join(', ') }}</td><td>v{{ r.versao_protocolo }}</td>
+      <td>
+        <a href="{{ url_for('baixar_relatorio', slug=pr.slug, rid=r.id, formato='pdf') }}">{{ 'PDF' if r.pdf else 'gerar PDF' }}</a> ·
+        <a href="{{ url_for('baixar_relatorio', slug=pr.slug, rid=r.id, formato='tex') }}">.tex</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="mudo">Nenhum relatório gerado ainda.</p>{% endif %}
 </section>
 {% endblock %}
 {% block scripts %}

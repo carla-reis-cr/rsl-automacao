@@ -14,7 +14,7 @@
   <button type="button" class="botao pequeno" onclick="copiar('tex')">Copiar</button>
   <a class="botao pequeno" href="{{ url_for('latex_protocolo', slug=pr.slug) }}">Baixar .tex</a>
   <a class="botao pequeno primario" href="{{ url_for('pdf_protocolo', slug=pr.slug) }}">Baixar PDF</a>
-  {% if not compilador %}<span class="mudo">Para o PDF é preciso instalar um compilador LaTeX (MiKTeX). O .tex abre no Overleaf.</span>{% endif %}
+  {% if not compilador %}<span class="alerta-txt">⚠️ Para gerar o PDF aqui você precisa baixar e instalar o MiKTeX (miktex.org) e reabrir o app. Sem instalar: baixe o .tex e compile no Overleaf (overleaf.com).</span>{% endif %}
 </div>
 
 <textarea id="tex" class="mono" rows="32" readonly>{{ texto }}</textarea>
