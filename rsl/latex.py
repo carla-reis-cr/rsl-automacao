@@ -83,9 +83,11 @@ def protocolo_tex(p: dict, estado: str) -> str:
         linhas = [[tex(g["nome"]), tex(B.grupo(g["termos"])) + (r" \newline \textbf{AND}" if i < len(grupos) - 1 else "")]
                   for i, g in enumerate(grupos)]
         L += _tabela([("Termo principal", 0.25), ("Termos alternativos", 0.67)], linhas)
+    L.append(rf"\textbf{{Campos da busca:}} {tex(B.campos_texto(p))}. "
+             "Nas bases que não permitem restringir o campo, vale o que consta na tabela abaixo.\n")
     L.append(r"\textbf{Bases e campos de busca} (a confirmar nas buscas piloto):" + "\n")
     linhas = [[tex(B.BASES[b]["nome"]), tex(B.BASES[b]["campos"]),
-               "API ou exportação manual" if B.BASES[b]["api"] else "exportação manual (RIS)"]
+               "API ou exportação manual" if B.BASES[b]["api"] else f"exportação manual ({B.BASES[b].get('exportacao', 'RIS')})"]
               for b in p.get("bases", [])]
     L += _tabela([("Base", 0.17), ("Campos", 0.5), ("Execução", 0.25)], linhas)
     L.append(rf"\textbf{{Filtros:}} {tex(B._filtros_texto(p.get('filtros') or {}))}. "

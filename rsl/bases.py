@@ -13,11 +13,18 @@ TIPOS_DOC = {
     "chapter": "Capítulo de livro",
 }
 
+CAMPOS_BUSCA = {
+    "titulo": "título",
+    "resumo": "resumo",
+    "palavras": "palavras-chave do autor",
+}
+
 BASES = {
     "acm": {
         "nome": "ACM Digital Library",
         "url": "https://dl.acm.org/search/advanced",
         "api": False,
+        "exportacao": "BibTeX",
         "campos": "Título, resumo e palavras-chave (considerar 'ACM Guide to Computing Literature')",
     },
     "ieee": {
@@ -36,13 +43,14 @@ BASES = {
         "nome": "SpringerLink",
         "url": "https://link.springer.com/advanced-search",
         "api": True,
+        "exportacao": "CSV",
         "campos": "Não permite restringir a título/resumo/palavras-chave (busca em todos os metadados)",
     },
     "wiley": {
         "nome": "Wiley Online Library",
         "url": "https://onlinelibrary.wiley.com/search/advanced",
         "api": False,
-        "campos": "Definir no piloto: resumo ou todos os metadados",
+        "campos": "Title, Abstract e Keywords (uma linha de busca por campo, ligadas por OR)",
     },
     "scopus": {
         "nome": "Scopus",
@@ -123,6 +131,36 @@ def _grupos_validos(protocolo):
     return [g for g in protocolo.get("grupos", []) if any(limpar_termo(t) for t in g.get("termos", []))]
 
 
+def _expandir_grupos(grupos):
+    """Escreve por extenso os curingas de cada grupo: (termos por grupo, trocas feitas, termos a revisar)."""
+    termos_grupos, trocas, revisar = [], [], []
+    for g in grupos:
+        tg = []
+        for t in g["termos"]:
+            if not limpar_termo(t):
+                continue
+            exp, situacao = expandir_curinga(limpar_termo(t))
+            if situacao == "expandido":
+                trocas.append(f"{limpar_termo(t)} → {', '.join(exp)}")
+            elif situacao == "revisar":
+                revisar.append(limpar_termo(t))
+            tg += [e for e in exp if e not in tg]
+        termos_grupos.append(tg)
+    return termos_grupos, trocas, revisar
+
+
+def campos_busca(protocolo: dict) -> list:
+    """Campos em que a busca é feita (título, resumo, palavras-chave); sem definição, todos."""
+    definidos = protocolo.get("campos_busca")
+    campos = [c for c in CAMPOS_BUSCA if c in (definidos or CAMPOS_BUSCA)]
+    return campos or list(CAMPOS_BUSCA)
+
+
+def campos_texto(protocolo: dict) -> str:
+    nomes = [CAMPOS_BUSCA[c] for c in campos_busca(protocolo)]
+    return nomes[0] if len(nomes) == 1 else ", ".join(nomes[:-1]) + " e " + nomes[-1]
+
+
 def _filtros_texto(f: dict) -> str:
     partes = []
     if f.get("idioma"):
@@ -148,7 +186,13 @@ def gerar(base_id: str, protocolo: dict) -> dict:
         return {"strings": [], "avisos": ["Defina os grupos de termos no protocolo."], "filtros_no_site": filtros_site}
 
     if base_id == "scopus":
-        s = " AND ".join(f"TITLE-ABS-KEY{grupo(g['termos'])}" for g in grupos)
+        campos = campos_busca(protocolo)
+        rot = {"titulo": "TITLE", "resumo": "ABS", "palavras": "KEY"}
+        if len(campos) == len(CAMPOS_BUSCA):
+            em_campos = lambda g: f"TITLE-ABS-KEY{g}"
+        else:
+            em_campos = lambda g: "(" + " OR ".join(f"{rot[c]}{g}" for c in campos) + ")"
+        s = " AND ".join(em_campos(grupo(g["termos"])) for g in grupos)
         if f.get("idioma"):
             s += f" AND LANGUAGE({f['idioma'].lower()})"
         mapa = {"article": "ar", "conference": "cp", "review": "re", "chapter": "ch"}
@@ -162,7 +206,13 @@ def gerar(base_id: str, protocolo: dict) -> dict:
         return {"strings": [s], "avisos": avisos, "filtros_no_site": "já incluídos na string"}
 
     if base_id == "wos":
-        s = " AND ".join(f"TS={grupo(g['termos'])}" for g in grupos)
+        campos = campos_busca(protocolo)
+        rot = {"titulo": "TI", "resumo": "AB", "palavras": "AK"}
+        if len(campos) == len(CAMPOS_BUSCA):
+            em_campos = lambda g: f"TS={g}"
+        else:
+            em_campos = lambda g: "(" + " OR ".join(f"{rot[c]}={g}" for c in campos) + ")"
+        s = " AND ".join(em_campos(grupo(g["termos"])) for g in grupos)
         if f.get("idioma"):
             s += f" AND LA=({f['idioma'].capitalize()})"
         mapa = {"article": "Article", "conference": "Proceedings Paper", "review": "Review", "chapter": "Book Chapter"}
@@ -174,27 +224,34 @@ def gerar(base_id: str, protocolo: dict) -> dict:
         return {"strings": [s], "avisos": avisos, "filtros_no_site": "já incluídos na string"}
 
     if base_id == "acm":
-        avisos.append("Na busca avançada, restrinja a Title, Abstract e Author Keyword e escolha 'The ACM Guide to Computing Literature'. "
-                      "Confirme no piloto como a ACM trata curingas dentro de aspas.")
-        return {"strings": [string_generica(protocolo)], "avisos": avisos, "filtros_no_site": filtros_site}
+        # A ACM ignora o curinga dentro de aspas (vira busca literal): as variações vão por extenso.
+        termos_grupos, trocas, revisar = _expandir_grupos(grupos)
+        # Formato do campo "Edit Query": cada eixo busca nos campos do protocolo; eixos ligados por AND.
+        rot = {"titulo": "Title", "resumo": "Abstract", "palavras": "Keyword"}
+        campos = [rot[c] for c in campos_busca(protocolo)]
+        eixos = []
+        for tg in termos_grupos:
+            g = grupo(tg, curinga=False)
+            eixos.append("(" + " OR ".join(f"{campo}:{g}" for campo in campos) + ")")
+        s = " AND ".join(eixos)
+        avisos.append("Cole a string inteira no campo 'Edit Query' da Advanced Search (já traz " + ", ".join(campos) + ") "
+                      "e escolha 'The ACM Guide to Computing Literature'.")
+        if revisar:
+            avisos.append("Curinga removido sem expansão conhecida (revise e complete a palavra): " + ", ".join(revisar) + ".")
+        return {"strings": [s], "avisos": avisos, "filtros_no_site": filtros_site}
 
     if base_id == "ieee":
-        avisos.append("Use a 'Command Search'. Restrinja a título, resumo e palavras-chave no piloto; a IEEE limita o número de termos e de curingas por busca.")
-        return {"strings": [string_generica(protocolo)], "avisos": avisos, "filtros_no_site": filtros_site}
+        # Command Search: cada eixo procurado nos campos do protocolo (nomes de campo a confirmar na busca piloto).
+        rot = {"titulo": "Document Title", "resumo": "Abstract", "palavras": "Author Keywords"}
+        campos = [rot[c] for c in campos_busca(protocolo)]
+        eixos = ["(" + " OR ".join(f'"{campo}":{grupo(g["termos"])}' for campo in campos) + ")" for g in grupos]
+        avisos.append("Use a 'Command Search'. Os nomes de campo (" + ", ".join(campos) + ") devem ser confirmados na busca piloto; "
+                      "a IEEE limita o número de termos e de curingas por busca. Ano e tipo de documento ficam nos filtros do site.")
+        return {"strings": [" AND ".join(eixos)], "avisos": avisos, "filtros_no_site": filtros_site}
 
     if base_id == "sciencedirect":
         # Sem curingas e no máximo 8 conectores booleanos por campo: divide em subconsultas.
-        termos_grupos, trocas, revisar = [], [], []
-        for g in grupos:
-            tg = []
-            for t in g["termos"]:
-                exp, situacao = expandir_curinga(limpar_termo(t))
-                if situacao == "expandido":
-                    trocas.append(f"{limpar_termo(t)} → {', '.join(exp)}")
-                elif situacao == "revisar":
-                    revisar.append(limpar_termo(t))
-                tg += [e for e in exp if e not in tg]
-            termos_grupos.append(tg)
+        termos_grupos, trocas, revisar = _expandir_grupos(grupos)
         tamanhos = melhor_divisao([len(tg) for tg in termos_grupos])
         fatias = [[tg[i:i + k] for i in range(0, len(tg), k)] for tg, k in zip(termos_grupos, tamanhos)]
         combinacoes = [[]]
@@ -211,14 +268,46 @@ def gerar(base_id: str, protocolo: dict) -> dict:
         return {"strings": strings, "avisos": avisos, "filtros_no_site": filtros_site}
 
     if base_id == "springer":
-        avisos.append("A SpringerLink busca em todos os metadados; aplique o filtro de idioma e remova itens 'Preview-Only'.")
+        avisos.append("A busca pela interface da SpringerLink não aceita filtros dentro da string: aplique idioma, tipo e período nos filtros do site "
+                      "e remova itens 'Preview-Only'. Na busca via API, idioma e período vão como restrições na consulta.")
         return {"strings": [string_generica(protocolo)], "avisos": avisos, "filtros_no_site": filtros_site}
 
     if base_id == "wiley":
-        avisos.append("Defina no piloto se a busca será no resumo ou em todos os metadados e registre a decisão.")
-        return {"strings": [string_generica(protocolo)], "avisos": avisos, "filtros_no_site": filtros_site}
+        # Cada campo é uma linha da Advanced Search (sem prefixo "Campo:" na string) e o curinga não vale dentro de aspas.
+        termos_grupos, trocas, revisar = _expandir_grupos(grupos)
+        s = " AND ".join(grupo(tg, curinga=False) for tg in termos_grupos)
+        rot = {"titulo": "Title", "resumo": "Abstract", "palavras": "Keywords"}
+        campos = [rot[c] for c in campos_busca(protocolo)]
+        avisos.append("Na Advanced Search, use uma linha por campo (" + ", ".join(campos) + "), cada uma com esta string, "
+                      "ligadas por OR. Como a Wiley não agrupa linhas, os dois eixos precisam aparecer no mesmo campo.")
+        if revisar:
+            avisos.append("Curinga removido sem expansão conhecida (revise e complete a palavra): " + ", ".join(revisar) + ".")
+        return {"strings": [s], "avisos": avisos, "filtros_no_site": filtros_site}
 
     return {"strings": [string_generica(protocolo)], "avisos": avisos, "filtros_no_site": filtros_site}
+
+
+def consulta_api(base_id: str, protocolo: dict, res: dict) -> str:
+    """Consulta enviada à API da base (mostrada ao usuário antes de executar).
+
+    Scopus e WoS já trazem os filtros na string. Na IEEE a API busca em todos os metadados (sem sintaxe de campo) e recebe
+    o período como parâmetro. Na Springer, idioma e período entram como restrições da própria consulta.
+    """
+    if base_id == "ieee" and not res.get("personalizada"):
+        return string_generica(protocolo)
+    consulta = " ".join(res["strings"])
+    if base_id == "springer":
+        f = protocolo.get("filtros", {}) or {}
+        extras = []
+        if str(f.get("idioma", "")).lower().startswith("en") and "language:" not in consulta:
+            extras.append("language:en")
+        if f.get("ano_inicio") and "onlinedatefrom:" not in consulta:
+            extras.append(f"onlinedatefrom:{int(f['ano_inicio'])}-01-01")
+        if f.get("ano_fim") and "onlinedateto:" not in consulta:
+            extras.append(f"onlinedateto:{int(f['ano_fim'])}-12-31")
+        if extras:
+            consulta = f"({consulta}) AND " + " AND ".join(extras)
+    return consulta
 
 
 def strings_da_base(base_id: str, protocolo: dict) -> dict:

@@ -8,6 +8,7 @@ Observações importantes para o relato:
 - Algumas APIs não devolvem resumos (WoS Starter; Scopus sem acesso institucional).
   Use "Completar resumos" (OpenAlex) antes da triagem.
 """
+import re
 import time
 
 import requests
@@ -106,14 +107,21 @@ TIPOS_IEEE = {"Journals": "article", "Early Access Articles": "article", "Magazi
               "Conferences": "conference", "Books": "chapter"}
 
 
-def _ieee(query, chaves, maximo, progresso):
+def _ieee(query, chaves, maximo, progresso, filtros=None):
     if not chaves.get("ieee"):
         raise ErroAPI("Chave da IEEE Xplore não configurada.")
     url = "https://ieeexploreapi.ieee.org/api/v1/search/articles"
     paginas, regs, inicio, total = [], [], 1, 0
+    f = filtros or {}
+    avisos = ["A API da IEEE busca em todos os metadados e não filtra tipo de documento: tipo e campos são conferidos na triagem."]
+    periodo = {}
+    if f.get("ano_inicio"):
+        periodo["start_year"] = int(f["ano_inicio"])
+    if f.get("ano_fim"):
+        periodo["end_year"] = int(f["ano_fim"])
     while True:
         dados = _get(url, {"apikey": chaves["ieee"], "querytext": query, "max_records": 200,
-                           "start_record": inicio, "format": "json"})
+                           "start_record": inicio, "format": "json", **periodo})
         paginas.append(dados)
         total = int(dados.get("total_records", 0) or 0)
         arts = dados.get("articles", []) or []
@@ -134,7 +142,7 @@ def _ieee(query, chaves, maximo, progresso):
             break
         inicio += 200
         time.sleep(0.5)
-    return total, regs[:maximo], paginas, []
+    return total, regs[:maximo], paginas, avisos
 
 
 # ---------------- Springer Nature ----------------
@@ -142,18 +150,28 @@ TIPOS_SPRINGER = {"Article": "article", "Chapter": "chapter", "ConferencePaper":
                   "Chapter ConferencePaper": "conference", "Review": "review"}
 
 
-def _springer(query, chaves, maximo, progresso, idioma=""):
+RESTRICAO_SPRINGER = re.compile(r"\s+AND\s+(?:language|onlinedatefrom|onlinedateto):\S+", re.IGNORECASE)
+
+
+def _springer(query, chaves, maximo, progresso):
     if not chaves.get("springer"):
         raise ErroAPI("Chave da Springer Nature não configurada.")
     url = "https://api.springernature.com/meta/v2/json"
     q = query
     avisos = []
-    if idioma.lower().startswith("en"):
-        q = f"({query}) AND language:en"
-        avisos.append("Filtro 'language:en' acrescentado à consulta da API.")
     paginas, regs, inicio, total = [], [], 1, 0
     while True:
-        dados = _get(url, {"q": q, "api_key": chaves["springer"], "s": inicio, "p": 25})
+        try:
+            dados = _get(url, {"q": q, "api_key": chaves["springer"], "s": inicio, "p": 25})
+        except ErroAPI as ex:
+            # Filtros como language: exigem o plano Premium; no plano Basic repete sem o filtro.
+            sem_filtros = RESTRICAO_SPRINGER.sub("", q).strip()
+            if sem_filtros != q and "premium feature" in str(ex).lower():
+                q = sem_filtros
+                avisos[:] = ["O plano da chave Springer não permite restrições de idioma/período na consulta (recurso Premium): "
+                             "a busca foi feita sem esses filtros. Aplique-os na triagem (idioma inglês, período do protocolo)."]
+                continue
+            raise
         paginas.append(dados)
         try:
             total = int((dados.get("result") or [{}])[0].get("total", 0))
@@ -218,15 +236,15 @@ def _wos(query, chaves, maximo, progresso):
     return total, regs[:maximo], paginas, ["A WoS Starter API não devolve resumos: use 'Completar resumos' antes da triagem."]
 
 
-def executar(base_id, query, cfg, progresso=lambda n, t: None, idioma=""):
+def executar(base_id, query, cfg, progresso=lambda n, t: None, filtros=None):
     chaves = cfg.get("chaves", {})
     maximo = int(cfg.get("api_max_registros", 5000) or 5000)
     if base_id == "scopus":
         return _scopus(query, chaves, maximo, progresso)
     if base_id == "ieee":
-        return _ieee(query, chaves, maximo, progresso)
+        return _ieee(query, chaves, maximo, progresso, filtros)
     if base_id == "springer":
-        return _springer(query, chaves, maximo, progresso, idioma)
+        return _springer(query, chaves, maximo, progresso)
     if base_id == "wos":
         return _wos(query, chaves, maximo, progresso)
     raise ErroAPI("Esta base não tem API de busca; use a exportação RIS.")

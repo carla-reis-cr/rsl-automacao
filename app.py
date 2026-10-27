@@ -10,7 +10,7 @@ import webbrowser
 from pathlib import Path
 from urllib.parse import quote
 
-from flask import (Flask, Response, abort, flash, jsonify, redirect, render_template, request, url_for)
+from flask import (Flask, Response, abort, flash, jsonify, redirect, render_template, request, send_file, url_for)
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -57,7 +57,7 @@ def obsidian(caminho: Path) -> str:
 
 @app.context_processor
 def contexto():
-    return {"VERSAO": VERSAO, "BASES": B.BASES, "TIPOS_DOC": B.TIPOS_DOC, "obsidian": obsidian,
+    return {"VERSAO": VERSAO, "BASES": B.BASES, "TIPOS_DOC": B.TIPOS_DOC, "CAMPOS_BUSCA": B.CAMPOS_BUSCA, "obsidian": obsidian,
             "ROTULO": S.ROTULO, "APLICACOES": P.APLICACOES}
 
 
@@ -244,9 +244,31 @@ def buscas(slug):
     strings = {b: B.strings_da_base(b, p) for b in p.get("bases", [])}
     controle_txt = "\n".join(f"{c['doi']} | {c['titulo']}" if c["doi"] else c["titulo"] for c in pr.controle)
     c = cfg()
-    return render_template("buscas.html", pr=pr, p=p, strings=strings, execs=pr.execucoes, controle_txt=controle_txt,
+    execs = pr.execucoes
+    por_base = {}
+    diferencas = {}
+    for e in reversed(execs):
+        por_base.setdefault(e["base_id"], []).append(e)
+        total = str(e.get("resultados_site") or "").replace(".", "").replace(",", "").replace(" ", "")
+        if total.isdigit() and int(total) != e["registros"]:
+            diferencas[e["id"]] = int(total) - e["registros"]
+    consultas_api = {b: B.consulta_api(b, p, strings[b]) for b in strings}
+    return render_template("buscas.html", pr=pr, p=p, strings=strings, consultas_api=consultas_api, execs_base=por_base, diferencas=diferencas,
+                           controle={c["id"]: c for c in pr.controle}, controle_txt=controle_txt,
                            api_ok={b: apis.chave_configurada(b, c) for b in B.BASES}, hoje=hoje(),
                            api_status=_api_status.get(slug, {}))
+
+
+@app.route("/p/<slug>/exportacoes/<eid>/<int:i>")
+def baixar_exportacao(slug, eid, i):
+    pr = projeto(slug)
+    e = next((x for x in pr.execucoes if x["id"] == eid), None)
+    if not e or not 0 <= i < len(e.get("arquivos", [])):
+        abort(404)
+    caminho = pr.p("exportacoes") / e["arquivos"][i]["nome"]
+    if not caminho.exists():
+        abort(404)
+    return send_file(caminho, as_attachment=True, download_name=caminho.name)
 
 
 @app.route("/p/<slug>/strings/<base>", methods=["POST"])
@@ -275,7 +297,7 @@ def importar(slug):
     pr = projeto(slug)
     arquivos = [(f.filename, f.read()) for f in request.files.getlist("arquivos") if f and f.filename]
     if not arquivos:
-        flash("Selecione ao menos um arquivo RIS.", "erro")
+        flash("Selecione ao menos um arquivo de exportação (RIS, BibTeX ou CSV).", "erro")
         return redirect(url_for("buscas", slug=slug))
     strings = [s.strip() for s in request.form.get("string", "").split("\n\n") if s.strip()]
     try:
@@ -303,14 +325,14 @@ def executar_api(slug, base):
     c = cfg()
     est = {"ativa": True, "base": B.BASES[base]["nome"], "n": 0, "total": 0, "erro": "", "msg": ""}
     _api_status[slug] = est
-    idioma = (pr.protocolo.get("filtros") or {}).get("idioma", "")
+    filtros = pr.protocolo.get("filtros") or {}
 
     def rodar():
         import json as _json
         try:
             def prog(nn, tt):
                 est["n"], est["total"] = nn, tt
-            total, regs, paginas, avisos = apis.executar(base, consulta, c, prog, idioma)
+            total, regs, paginas, avisos = apis.executar(base, consulta, c, prog, filtros)
             data = hoje()
             bruto = _json.dumps({"consulta": consulta, "base": base, "data": data, "paginas": paginas}, ensure_ascii=False).encode("utf-8")
             ris_txt = ris.escrever(regs).encode("utf-8")

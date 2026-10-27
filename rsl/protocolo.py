@@ -26,6 +26,7 @@ def novo(titulo: str) -> dict:
         "questoes": [],
         "grupos": [{"nome": "", "termos": []}, {"nome": "", "termos": []}],
         "bases": list(B.ORDEM_PADRAO),
+        "campos_busca": list(B.CAMPOS_BUSCA),
         "filtros": {"idioma": "English", "tipos": ["article", "conference", "review"], "ano_inicio": None, "ano_fim": None},
         "strings_personalizadas": {},
         "criterios_inclusao": [],
@@ -121,6 +122,7 @@ def do_formulario(form, atual: dict) -> dict:
         i += 1
     p["grupos"] = grupos
     p["bases"] = [b for b in B.ORDEM_PADRAO if form.get(f"base_{b}")]
+    p["campos_busca"] = [c for c in B.CAMPOS_BUSCA if form.get(f"campo_{c}")] or list(B.CAMPOS_BUSCA)
     anos = lambda v: int(v) if str(v).strip().isdigit() else None
     p["filtros"] = {
         "idioma": form.get("idioma", "").strip(),
@@ -197,11 +199,12 @@ def renderizar(p: dict, estado: str) -> str:
             sufixo = "<br>AND" if i < len(grupos) - 1 else ""
             L.append(f"| {md_escape_tabela(g['nome'])} | {md_escape_tabela(B.grupo(g['termos']))}{sufixo} |")
         L.append("")
+    L.append(f"**Campos da busca:** {B.campos_texto(p)}. Nas bases que não permitem restringir o campo, vale o que consta na tabela abaixo.\n")
     L.append("**Bases e campos de busca** (a confirmar nas buscas piloto):\n")
     L.append("| Base | Campos | Execução |\n|---|---|---|")
     for b in p.get("bases", []):
         info = B.BASES[b]
-        exe = "API ou exportação manual" if info["api"] else "exportação manual (RIS)"
+        exe = "API ou exportação manual" if info["api"] else f"exportação manual ({info.get('exportacao', 'RIS')})"
         L.append(f"| {info['nome']} | {md_escape_tabela(info['campos'])} | {exe} |")
     L.append("")
     f = p.get("filtros") or {}

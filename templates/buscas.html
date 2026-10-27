@@ -13,6 +13,13 @@
 <section class="cartao" id="base-{{ b }}">
   <div class="cab">
     <h2>{{ info.nome }}</h2>
+    {% set execs_b = execs_base.get(b, []) %}
+    {% set pil = execs_b|selectattr('fase', 'equalto', 'piloto')|list %}
+    {% set defi = execs_b|selectattr('fase', 'equalto', 'definitiva')|list %}
+    <span class="status-busca">
+      <span class="tag piloto">piloto: {{ ('feita em ' ~ pil[0].data) if pil else 'pendente' }}</span>
+      <span class="tag definitiva">definitiva: {{ ('feita em ' ~ defi[0].data) if defi else 'pendente' }}</span>
+    </span>
     <a href="{{ info.url }}" target="_blank" rel="noopener">abrir busca avançada ↗</a>
   </div>
   <p class="mudo">{{ info.campos }} · filtros no site: {{ s.filtros_no_site }}{% if s.get('personalizada') %} · <b>string personalizada</b>{% endif %}</p>
@@ -28,7 +35,7 @@
   </form>
 
   <details>
-    <summary>Registrar execução com arquivo RIS</summary>
+    <summary>Registrar execução com arquivo {{ info.get('exportacao', 'RIS') }}</summary>
     <form method="post" action="{{ url_for('importar', slug=pr.slug) }}" enctype="multipart/form-data" class="importar">
       <input type="hidden" name="base" value="{{ b }}">
       <div class="linha">
@@ -37,7 +44,7 @@
         <label>Total mostrado no site <input name="resultados_site" placeholder="ex.: 412"></label>
       </div>
       <label>String exata executada (confira antes de salvar) <textarea name="string" rows="3" class="mono">{{ s.strings|join('\n\n') }}</textarea></label>
-      <label>Arquivo(s) RIS — vários se a base limitou a exportação em lotes <input type="file" name="arquivos" accept=".ris,.txt" multiple required></label>
+      <label>Arquivo(s) {{ info.get('exportacao', 'RIS') }} — vários se a base limitou a exportação em lotes <input type="file" name="arquivos" accept=".ris,.bib,.csv,.txt" multiple required></label>
       <label>Observações <input name="observacoes" placeholder="ex.: exportação em 2 lotes; filtro de idioma aplicado no site"></label>
       <button class="botao primario">Registrar</button>
     </form>
@@ -48,7 +55,7 @@
     <summary>Executar via API {% if not api_ok[b] %}<span class="mudo">(configure a chave em Configurações)</span>{% endif %}</summary>
     <form method="post" action="{{ url_for('executar_api', slug=pr.slug, base=b) }}">
       <p class="mudo">Os totais via API podem diferir da interface web; registre os dois no relato. A resposta bruta (JSON) e um RIS convertido ficam salvos com hash.</p>
-      <label>Consulta enviada à API <textarea name="string" rows="3" class="mono">{{ s.strings|join(' ') }}</textarea></label>
+      <label>Consulta enviada à API <textarea name="string" rows="3" class="mono">{{ consultas_api[b] }}</textarea></label>
       <div class="linha">
         <label>Fase <select name="fase"><option value="piloto">piloto</option><option value="definitiva">definitiva</option></select></label>
         <button class="botao primario" {{ 'disabled' if not api_ok[b] }}>Executar</button>
@@ -56,6 +63,54 @@
     </form>
   </details>
   {% endif %}
+  {% set execs = execs_base.get(b, []) %}
+  <details>
+    <summary>Histórico de importações ({{ execs|length }})</summary>
+    {% for e in execs %}
+    <div class="execucao">
+      <p>
+        <b>{{ e.id }}</b> <span class="tag {{ e.fase }}">{{ e.fase }}</span> · busca de {{ e.data }} · {{ 'via API' if e.metodo == 'api' else 'exportação manual' }}
+        · registrada em {{ e.registrado_em }} · protocolo v{{ e.versao_protocolo }}
+        · <a href="{{ obsidian(pr.pasta / '01 Buscas' / (pr.nome_nota_execucao(e) ~ '.md')) }}">nota no Obsidian</a>
+      </p>
+      <p>
+        Site/API: <b>{{ e.resultados_site or '—' }}</b> · importados: <b>{{ e.registros }}</b>
+        {% if e.id in diferencas %}<span class="alerta-txt">· diferença de {{ diferencas[e.id] }}</span>{% endif %}
+        · controle: <b>{{ e.controle_encontrados|length }}/{{ e.controle_total }}</b>
+      </p>
+      <details>
+        <summary>String executada{% if e.strings|length > 1 %} ({{ e.strings|length }} subconsultas){% endif %}</summary>
+        {% for st in e.strings %}<pre class="mono">{{ st }}</pre>{% endfor %}
+      </details>
+      <details>
+        <summary>Arquivos ({{ e.arquivos|length }})</summary>
+        <table>
+          <tr><th>Arquivo salvo</th><th>Original</th><th>SHA-256</th></tr>
+          {% for a in e.arquivos %}
+          <tr>
+            <td><a href="{{ url_for('baixar_exportacao', slug=pr.slug, eid=e.id, i=loop.index0) }}">{{ a.nome }}</a></td>
+            <td>{{ a.original }}</td>
+            <td class="mono">{{ a.sha256[:16] }}…</td>
+          </tr>
+          {% endfor %}
+        </table>
+      </details>
+      {% if e.controle_total %}
+      <details>
+        <summary>Conjunto de controle ({{ e.controle_encontrados|length }} de {{ e.controle_total }} recuperados)</summary>
+        <ul>
+          {% for cid, c in controle.items() %}
+          <li>{{ '✅' if cid in e.controle_encontrados else '❌' }} {{ cid }} — {{ c.titulo or c.doi }}</li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endif %}
+      {% if e.observacoes %}<p><b>Observações:</b> {{ e.observacoes }}</p>{% endif %}
+    </div>
+    {% else %}
+    <p class="mudo">Nenhuma importação registrada para esta base.</p>
+    {% endfor %}
+  </details>
 </section>
 {% endfor %}
 
@@ -66,23 +121,6 @@
     <textarea name="controle" rows="7" class="mono" placeholder="10.1016/j.xxx.2024.01.001 | Título do artigo">{{ controle_txt }}</textarea>
     <button class="botao">Salvar e conferir</button>
   </form>
-</section>
-
-<section class="cartao">
-  <h2>Execuções registradas</h2>
-  {% if execs %}
-  <table>
-    <tr><th>ID</th><th>Base</th><th>Fase</th><th>Data</th><th>Método</th><th>Site/API</th><th>Importados</th><th>Controle</th></tr>
-    {% for e in execs|reverse %}
-    <tr>
-      <td><a href="{{ obsidian(pr.pasta / '01 Buscas' / (pr.nome_nota_execucao(e) ~ '.md')) }}">{{ e.id }}</a></td>
-      <td>{{ e.base_nome }}</td><td><span class="tag {{ e.fase }}">{{ e.fase }}</span></td><td>{{ e.data }}</td><td>{{ e.metodo }}</td>
-      <td>{{ e.resultados_site or '—' }}</td><td>{{ e.registros }}</td>
-      <td>{{ e.controle_encontrados|length }}/{{ e.controle_total }}</td>
-    </tr>
-    {% endfor %}
-  </table>
-  {% else %}<p class="mudo">Nenhuma ainda.</p>{% endif %}
 </section>
 {% endblock %}
 {% block scripts %}

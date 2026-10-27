@@ -7,9 +7,11 @@ from pathlib import Path
 from . import VERSAO
 from . import bases as B
 from . import protocolo as P
-from . import ris
+from . import bibtex, csvref, ris
 from .vault import (agora, anexar, escrever_atomico, escrever_nota, hoje, ler_json, md_escape_tabela,
                     nome_arquivo_seguro, salvar_json, sha256_arquivo, sha256_texto, slugify)
+
+EXT_REFERENCIAS = (".ris", ".bib", ".csv")
 
 PASTAS = {
     "protocolo": "00 Protocolo",
@@ -243,13 +245,24 @@ class Projeto:
             self.renderizar_indice_buscas()
             self.log("Conjunto de controle atualizado", f"{len(itens)} artigos")
 
+    @staticmethod
+    def _ler_exportacao(nome, conteudo):
+        """Lê um arquivo de exportação (RIS, BibTeX ou CSV da Springer); None se a extensão não for de referências."""
+        ext = Path(nome).suffix.lower()
+        if ext == ".bib":
+            return bibtex.ler(ris.ler_texto(conteudo))
+        if ext == ".csv":
+            return csvref.ler(ris.ler_texto(conteudo))
+        if ext == ".ris":
+            return ris.ler(ris.ler_texto(conteudo))
+        return None
+
     def _registros_da_execucao(self, e):
         regs = []
         for arq in e.get("arquivos", []):
-            if arq["nome"].lower().endswith(".ris"):
-                caminho = self.p("exportacoes") / arq["nome"]
-                if caminho.exists():
-                    regs += ris.ler(ris.ler_texto(caminho.read_bytes()))
+            caminho = self.p("exportacoes") / arq["nome"]
+            if caminho.exists():
+                regs += self._ler_exportacao(arq["nome"], caminho.read_bytes()) or []
         return regs
 
     @staticmethod
@@ -287,7 +300,7 @@ class Projeto:
         """arquivos: lista de (nome_original, bytes). registros_api: registros já normalizados (API)."""
         with self.lock:
             execs = self.execucoes
-            hashes_existentes = {a["sha256"] for e in execs for a in e.get("arquivos", []) if a["nome"].lower().endswith(".ris")}
+            hashes_existentes = {a["sha256"] for e in execs for a in e.get("arquivos", []) if a["nome"].lower().endswith(EXT_REFERENCIAS)}
             num = len(execs) + 1
             eid = f"E{num:03d}"
             base_nome = B.BASES.get(base_id, {}).get("nome", base_id)
@@ -300,16 +313,16 @@ class Projeto:
                 destino.parent.mkdir(parents=True, exist_ok=True)
                 destino.write_bytes(conteudo)
                 h = sha256_arquivo(destino)
-                if ext == ".ris" and metodo == "manual" and h in hashes_existentes:
+                if ext in EXT_REFERENCIAS and metodo == "manual" and h in hashes_existentes:
                     destino.unlink()
                     for s in salvos:
                         (self.p("exportacoes") / s["nome"]).unlink(missing_ok=True)
                     raise ValueError(f"O arquivo '{nome}' já foi importado antes (mesmo conteúdo).")
                 salvos.append({"nome": destino_nome, "original": nome, "sha256": h})
-                if ext == ".ris" and registros_api is None:
-                    lidos = ris.ler(ris.ler_texto(conteudo))
+                if ext in EXT_REFERENCIAS and registros_api is None:
+                    lidos = self._ler_exportacao(destino_nome, conteudo)
                     if not lidos:
-                        raise ValueError(f"Nenhum registro encontrado em '{nome}'. Confira se é um arquivo RIS.")
+                        raise ValueError(f"Nenhum registro encontrado em '{nome}'. Confira se é um arquivo RIS, BibTeX ou CSV da SpringerLink.")
                     regs += lidos
             if registros_api is not None:
                 regs = registros_api
@@ -384,7 +397,9 @@ class Projeto:
                     L.append(f"- {c['id']} — {c['titulo'] or c['doi']}")
         if e.get("observacoes"):
             L.append(f"\n## Observações\n\n{e['observacoes']}")
-        L.append("\n## Evidência\n\nAnexe aqui o print ou PDF da página de resultados: ![[ ]]")
+        if e["metodo"] != "api":
+            L.append("\n## Evidência\n\nAnexe o print ou PDF da página de resultados na área de notas livres, abaixo da linha marcada: "
+                     "o que está acima dela é regerado pelo app.")
         escrever_nota(self.p("buscas") / f"{self.nome_nota_execucao(e)}.md", props, "\n".join(L))
 
     def renderizar_indice_buscas(self):

@@ -50,6 +50,13 @@
       <label class="check"><input type="checkbox" name="base_{{ b }}" {{ 'checked' if b in p.bases }}> {{ info.nome }}{% if info.api %} <span class="tag">API</span>{% endif %}</label>
       {% endfor %}
     </div>
+    <h3>Campos da busca</h3>
+    <p class="mudo">Onde os termos são procurados. Vale para as bases que permitem restringir o campo (ACM, Scopus, Web of Science, Wiley).</p>
+    <div class="checks">
+      {% for c, rot in CAMPOS_BUSCA.items() %}
+      <label class="check"><input type="checkbox" name="campo_{{ c }}" {{ 'checked' if c in (p.campos_busca or CAMPOS_BUSCA) }}> {{ rot|capitalize }}</label>
+      {% endfor %}
+    </div>
     <h3>Filtros</h3>
     <div class="linha">
       <label>Idioma <input name="idioma" value="{{ p.filtros.idioma or '' }}" placeholder="English"></label>
