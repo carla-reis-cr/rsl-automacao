@@ -9,10 +9,16 @@
 {% if api_status.get('msg') and not api_status.get('ativa') %}<div class="aviso ok">{{ api_status.msg }}</div>{% endif %}
 {% if api_status.get('erro') and not api_status.get('ativa') %}<div class="aviso erro">API ({{ api_status.base }}): {{ api_status.erro }}</div>{% endif %}
 
+<div class="acoes">
+  <button type="button" class="botao pequeno" onclick="document.querySelectorAll('details.base').forEach(d => d.open = false)">Recolher todas as bases</button>
+  <button type="button" class="botao pequeno" onclick="document.querySelectorAll('details.base').forEach(d => d.open = true)">Expandir todas</button>
+</div>
+
 {% for b in p.bases %}
 {% set info = BASES[b] %}{% set s = strings[b] %}
 <section class="cartao" id="base-{{ b }}">
-  <div class="cab">
+  <details class="base" open>
+  <summary class="cab">
     <h2>{{ info.nome }}</h2>
     {% set execs_b = execs_base.get(b, []) %}
     {% set pil = execs_b|selectattr('fase', 'equalto', 'piloto')|list %}
@@ -22,7 +28,7 @@
       <span class="tag definitiva">definitiva: {{ ('feita em ' ~ defi[0].data) if defi else 'pendente' }}</span>
     </span>
     <a href="{{ info.url }}" target="_blank" rel="noopener">abrir busca avançada ↗</a>
-  </div>
+  </summary>
   <p class="mudo">{{ info.campos }} · filtros no site: {{ s.filtros_no_site }}{% if s.get('personalizada') %} · <b>string personalizada</b>{% endif %}</p>
   {% for a in s.avisos %}<p class="alerta-txt">⚠️ {{ a }}</p>{% endfor %}
 
@@ -112,6 +118,7 @@
     <p class="mudo">Nenhuma importação registrada para esta base.</p>
     {% endfor %}
   </details>
+  </details>
 </section>
 {% endfor %}
 
@@ -156,5 +163,20 @@
 </section>
 {% endblock %}
 {% block scripts %}
-<script>acompanhar("{{ url_for('status', slug=pr.slug) }}", "api", "api-status");</script>
+<script>acompanhar("{{ url_for('status', slug=pr.slug) }}", "api", "api-status");
+// Lembra quais bases estão recolhidas (por projeto), exceto a base indicada no endereço (#base-...).
+(function () {
+  const chave = "bases-recolhidas:{{ pr.slug }}";
+  let recolhidas = [];
+  try { recolhidas = JSON.parse(localStorage.getItem(chave) || "[]"); } catch (e) {}
+  document.querySelectorAll("details.base").forEach(function (d) {
+    const id = d.parentElement.id;
+    if (recolhidas.includes(id) && location.hash !== "#" + id) d.open = false;
+    d.addEventListener("toggle", function () {
+      const atual = Array.from(document.querySelectorAll("details.base:not([open])")).map(x => x.parentElement.id);
+      try { localStorage.setItem(chave, JSON.stringify(atual)); } catch (e) {}
+    });
+  });
+})();
+</script>
 {% endblock %}

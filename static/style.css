@@ -104,3 +104,10 @@ th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--bord
 .botao.excluir { border-color: var(--excluir); color: var(--excluir); }
 .botao.duvida { border-color: var(--duvida); color: var(--duvida); }
 .nav { display: flex; justify-content: space-between; margin-top: 12px; font-size: 13px; }
+
+details.base { margin-top: 0; border-top: none; padding-top: 0; }
+details.base > summary.cab { list-style: none; }
+details.base > summary.cab::-webkit-details-marker { display: none; }
+details.base > summary.cab h2 { display: inline; margin: 0; }
+details.base > summary.cab h2::before { content: "▾ "; color: var(--mudo); }
+details.base:not([open]) > summary.cab h2::before { content: "▸ "; }
