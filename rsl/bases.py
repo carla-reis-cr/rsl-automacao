@@ -40,11 +40,11 @@ BASES = {
         "campos": "Title, abstract or author-specified keywords (máx. 8 conectores booleanos por campo)",
     },
     "springer": {
-        "nome": "SpringerLink",
+        "nome": "Springer",
         "url": "https://link.springer.com/advanced-search",
-        "api": True,
+        "api": False,
         "exportacao": "CSV",
-        "campos": "Não permite restringir a título/resumo/palavras-chave (busca em todos os metadados)",
+        "campos": "Busca avançada do site: título ou texto completo (não há busca só no resumo)",
     },
     "wiley": {
         "nome": "Wiley Online Library",
@@ -268,8 +268,8 @@ def gerar(base_id: str, protocolo: dict) -> dict:
         return {"strings": strings, "avisos": avisos, "filtros_no_site": filtros_site}
 
     if base_id == "springer":
-        avisos.append("A busca pela interface da SpringerLink não aceita filtros dentro da string: aplique idioma, tipo e período nos filtros do site "
-                      "e remova itens 'Preview-Only'. Na busca via API, idioma e período vão como restrições na consulta.")
+        avisos.append("A busca no site da Springer não aceita filtros dentro da string: aplique idioma, tipo e período nos filtros do site "
+                      "e remova itens 'Preview-Only'. Registre se a busca foi no título ou no texto completo e exporte em CSV.")
         return {"strings": [string_generica(protocolo)], "avisos": avisos, "filtros_no_site": filtros_site}
 
     if base_id == "wiley":
@@ -291,23 +291,11 @@ def consulta_api(base_id: str, protocolo: dict, res: dict) -> str:
     """Consulta enviada à API da base (mostrada ao usuário antes de executar).
 
     Scopus e WoS já trazem os filtros na string. Na IEEE a API busca em todos os metadados (sem sintaxe de campo) e recebe
-    o período como parâmetro. Na Springer, idioma e período entram como restrições da própria consulta.
+    o período como parâmetro.
     """
     if base_id == "ieee" and not res.get("personalizada"):
         return string_generica(protocolo)
-    consulta = " ".join(res["strings"])
-    if base_id == "springer":
-        f = protocolo.get("filtros", {}) or {}
-        extras = []
-        if str(f.get("idioma", "")).lower().startswith("en") and "language:" not in consulta:
-            extras.append("language:en")
-        if f.get("ano_inicio") and "onlinedatefrom:" not in consulta:
-            extras.append(f"onlinedatefrom:{int(f['ano_inicio'])}-01-01")
-        if f.get("ano_fim") and "onlinedateto:" not in consulta:
-            extras.append(f"onlinedateto:{int(f['ano_fim'])}-12-31")
-        if extras:
-            consulta = f"({consulta}) AND " + " AND ".join(extras)
-    return consulta
+    return " ".join(res["strings"])
 
 
 def strings_da_base(base_id: str, protocolo: dict) -> dict:

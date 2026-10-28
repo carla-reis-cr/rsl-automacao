@@ -41,8 +41,15 @@
     </div>
   </form>
 
-  <details>
-    <summary>Registrar execução com arquivo {{ info.get('exportacao', 'RIS') }}</summary>
+  {% set execs = execs_base.get(b, []) %}
+  <div class="acoes acoes-base">
+    <button type="button" class="botao pequeno" data-painel="imp-{{ b }}" aria-expanded="false">Registrar execução ({{ info.get('exportacao', 'RIS') }})</button>
+    {% if info.api %}<button type="button" class="botao pequeno" data-painel="api-{{ b }}" aria-expanded="false">Executar via API</button>
+    {% if not api_ok[b] %}<span class="mudo">API: configure a chave em Configurações</span>{% endif %}{% endif %}
+    <button type="button" class="botao pequeno" data-painel="hist-{{ b }}" aria-expanded="false">Histórico de importações ({{ execs|length }})</button>
+  </div>
+
+  <div class="painel" id="imp-{{ b }}" hidden>
     <form method="post" action="{{ url_for('importar', slug=pr.slug) }}" enctype="multipart/form-data" class="importar">
       <input type="hidden" name="base" value="{{ b }}">
       <div class="linha">
@@ -55,11 +62,10 @@
       <label>Observações <input name="observacoes" placeholder="ex.: exportação em 2 lotes; filtro de idioma aplicado no site"></label>
       <button class="botao primario">Registrar</button>
     </form>
-  </details>
+  </div>
 
   {% if info.api %}
-  <details>
-    <summary>Executar via API {% if not api_ok[b] %}<span class="mudo">(configure a chave em Configurações)</span>{% endif %}</summary>
+  <div class="painel" id="api-{{ b }}" hidden>
     <form method="post" action="{{ url_for('executar_api', slug=pr.slug, base=b) }}">
       <p class="mudo">Os totais via API podem diferir da interface web; registre os dois no relato. A resposta bruta (JSON) e um RIS convertido ficam salvos com hash.</p>
       <label>Consulta enviada à API <textarea name="string" rows="3" class="mono">{{ consultas_api[b] }}</textarea></label>
@@ -68,11 +74,9 @@
         <button class="botao primario" {{ 'disabled' if not api_ok[b] }}>Executar</button>
       </div>
     </form>
-  </details>
+  </div>
   {% endif %}
-  {% set execs = execs_base.get(b, []) %}
-  <details>
-    <summary>Histórico de importações ({{ execs|length }})</summary>
+  <div class="painel" id="hist-{{ b }}" hidden>
     {% for e in execs %}
     <div class="execucao">
       <p>
@@ -80,17 +84,27 @@
         · registrada em {{ e.registrado_em }} · protocolo v{{ e.versao_protocolo }}
         · <a href="{{ obsidian(pr.pasta / '01 Buscas' / (pr.nome_nota_execucao(e) ~ '.md')) }}">nota no Obsidian</a>
       </p>
-      <p>
-        Site/API: <b>{{ e.resultados_site or '—' }}</b> · importados: <b>{{ e.registros }}</b>
-        {% if e.id in diferencas %}<span class="alerta-txt">· diferença de {{ diferencas[e.id] }}</span>{% endif %}
-        · controle: <b>{{ e.controle_encontrados|length }}/{{ e.controle_total }}</b>
-      </p>
-      <details>
-        <summary>String executada{% if e.strings|length > 1 %} ({{ e.strings|length }} subconsultas){% endif %}</summary>
-        {% for st in e.strings %}<pre class="mono">{{ st }}</pre>{% endfor %}
-      </details>
-      <details>
-        <summary>Arquivos ({{ e.arquivos|length }})</summary>
+      {% set aid = 'aba-' ~ e.id %}
+      <div class="abas-dados" role="tablist">
+        <button type="button" role="tab" class="ativa" data-aba="{{ aid }}-resumo" aria-selected="true">Resumo</button>
+        <button type="button" role="tab" data-aba="{{ aid }}-string" aria-selected="false">String{% if e.strings|length > 1 %} ({{ e.strings|length }}){% endif %}</button>
+        <button type="button" role="tab" data-aba="{{ aid }}-arquivos" aria-selected="false">Arquivos ({{ e.arquivos|length }})</button>
+        {% if e.controle_total %}<button type="button" role="tab" data-aba="{{ aid }}-controle" aria-selected="false">Controle ({{ e.controle_encontrados|length }}/{{ e.controle_total }})</button>{% endif %}
+        <button type="button" role="tab" class="perigo" data-aba="{{ aid }}-excluir" aria-selected="false">Excluir</button>
+      </div>
+
+      <div class="aba-painel" id="{{ aid }}-resumo" role="tabpanel">
+        <p>
+          Site/API: <b>{{ e.resultados_site or '—' }}</b> · importados: <b>{{ e.registros }}</b>
+          {% if e.id in diferencas %}<span class="alerta-txt">· diferença de {{ diferencas[e.id] }}</span>{% endif %}
+          · controle: <b>{{ e.controle_encontrados|length }}/{{ e.controle_total }}</b>
+        </p>
+        {% if e.observacoes %}<p><b>Observações:</b> {{ e.observacoes }}</p>{% endif %}
+      </div>
+      <div class="aba-painel" id="{{ aid }}-string" role="tabpanel" hidden>
+        {% for st in e.strings %}{% if e.strings|length > 1 %}<p class="mudo">Subconsulta {{ loop.index }}</p>{% endif %}<pre class="mono">{{ st }}</pre>{% endfor %}
+      </div>
+      <div class="aba-painel" id="{{ aid }}-arquivos" role="tabpanel" hidden>
         <table>
           <tr><th>Arquivo salvo</th><th>Original</th><th>SHA-256</th></tr>
           {% for a in e.arquivos %}
@@ -101,23 +115,31 @@
           </tr>
           {% endfor %}
         </table>
-      </details>
+      </div>
       {% if e.controle_total %}
-      <details>
-        <summary>Conjunto de controle ({{ e.controle_encontrados|length }} de {{ e.controle_total }} recuperados)</summary>
+      <div class="aba-painel" id="{{ aid }}-controle" role="tabpanel" hidden>
         <ul>
           {% for cid, c in controle.items() %}
           <li>{{ '✅' if cid in e.controle_encontrados else '❌' }} {{ cid }} — {{ c.titulo or c.doi }}</li>
           {% endfor %}
         </ul>
-      </details>
+      </div>
       {% endif %}
-      {% if e.observacoes %}<p><b>Observações:</b> {{ e.observacoes }}</p>{% endif %}
+      <div class="aba-painel" id="{{ aid }}-excluir" role="tabpanel" hidden>
+        <form method="post" action="{{ url_for('excluir_execucao', slug=pr.slug, eid=e.id) }}"
+              onsubmit="return confirm('Excluir a importação {{ e.id }}? Os registros dela saem da revisão e a nota e os arquivos vão para 01 Buscas/excluidas/{{ e.id }}.')">
+          <p class="mudo">Remove a importação, os {{ e.registros }} registros dela{% if e.fase == 'piloto' %} (piloto: não entram na triagem){% endif %}
+            e os arquivos. A nota e os arquivos ficam arquivados em <code>01 Buscas/excluidas/{{ e.id }}</code>. Não é possível excluir
+            se algum registro dela já tiver decisão de triagem, calibração ou nota de estudo.</p>
+          <label>Motivo (obrigatório, fica no log da revisão) <input name="motivo" required placeholder="ex.: arquivo errado; busca refeita em E015"></label>
+          <button class="botao pequeno excluir">Excluir importação</button>
+        </form>
+      </div>
     </div>
     {% else %}
     <p class="mudo">Nenhuma importação registrada para esta base.</p>
     {% endfor %}
-  </details>
+  </div>
   </details>
 </section>
 {% endfor %}
@@ -164,6 +186,32 @@
 {% endblock %}
 {% block scripts %}
 <script>acompanhar("{{ url_for('status', slug=pr.slug) }}", "api", "api-status");
+// Botões de ação de cada base: abrem o painel correspondente e fecham os outros da mesma base.
+document.querySelectorAll(".acoes-base [data-painel]").forEach(function (botao) {
+  botao.addEventListener("click", function () {
+    const alvo = document.getElementById(botao.dataset.painel);
+    const abrir = alvo.hidden;
+    botao.closest(".acoes-base").querySelectorAll("[data-painel]").forEach(function (outro) {
+      document.getElementById(outro.dataset.painel).hidden = true;
+      outro.setAttribute("aria-expanded", "false");
+      outro.classList.remove("primario");
+    });
+    alvo.hidden = !abrir;
+    botao.setAttribute("aria-expanded", String(abrir));
+    botao.classList.toggle("primario", abrir);
+  });
+});
+// Abas dos dados de cada importação no histórico.
+document.querySelectorAll(".abas-dados [data-aba]").forEach(function (aba) {
+  aba.addEventListener("click", function () {
+    aba.closest(".abas-dados").querySelectorAll("[data-aba]").forEach(function (outra) {
+      const ativa = outra === aba;
+      document.getElementById(outra.dataset.aba).hidden = !ativa;
+      outra.classList.toggle("ativa", ativa);
+      outra.setAttribute("aria-selected", String(ativa));
+    });
+  });
+});
 // Lembra quais bases estão recolhidas (por projeto), exceto a base indicada no endereço (#base-...).
 (function () {
   const chave = "bases-recolhidas:{{ pr.slug }}";

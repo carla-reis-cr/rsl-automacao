@@ -219,7 +219,7 @@ def renderizar(p: dict, estado: str) -> str:
     for titulo, chave in (("Critérios de inclusão", "criterios_inclusao"), ("Critérios de exclusão", "criterios_exclusao")):
         L.append(f"**{titulo}**\n")
         for c in p.get(chave, []):
-            L.append(f"- **{c['id']}:** {c['texto']} _(aplicação: {APLICACOES.get(c.get('aplicacao', 'triagem'))})_")
+            L.append(f"- **{c['id']}:** {c['texto']}")
         L.append("")
     L.append("**Fases**\n")
     L.append("1. **Busca:** execução das strings nas bases (via API quando disponível, ou exportação RIS), com registro da data, string exata, filtros, número de resultados e hash dos arquivos.")

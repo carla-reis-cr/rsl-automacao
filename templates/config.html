@@ -25,11 +25,10 @@
   </div>
 
   <h2>APIs das bases (experimental)</h2>
-  <p class="mudo">Deixe em branco para manter a chave atual. ACM, ScienceDirect e Wiley não têm API de busca: use exportação RIS.</p>
+  <p class="mudo">Deixe em branco para manter a chave atual. ACM, ScienceDirect, Springer e Wiley não têm API de busca: use a exportação do site.</p>
   {% for k, rot, onde in [('scopus','Scopus (Elsevier) — API key','dev.elsevier.com'),
                           ('scopus_insttoken','Scopus — Insttoken institucional (opcional)','biblioteca da universidade'),
                           ('ieee','IEEE Xplore — API key','developer.ieee.org'),
-                          ('springer','Springer Nature — API key','dev.springernature.com'),
                           ('wos','Web of Science Starter — API key','developer.clarivate.com')] %}
   <div class="linha chave">
     <label>{{ rot }} <span class="mudo">({{ onde }})</span>

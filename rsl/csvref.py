@@ -1,4 +1,4 @@
-"""Leitura do CSV exportado pela SpringerLink (Item Title, Publication Title, Item DOI, Authors, ...)."""
+"""Leitura do CSV exportado pela Springer (Item Title, Publication Title, Item DOI, Authors, ...)."""
 import csv
 import io
 import re

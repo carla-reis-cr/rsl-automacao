@@ -78,9 +78,9 @@ Modelo padrão: `sonnet`. Use `haiku` para economizar ou `opus` para casos difí
 |---|---|---|
 | Scopus | Elsevier Search API ([dev.elsevier.com](https://dev.elsevier.com)) | Resumos exigem acesso institucional (rede da universidade ou *insttoken*) |
 | IEEE Xplore | Metadata Search API ([developer.ieee.org](https://developer.ieee.org)) | Cota diária limitada |
-| SpringerLink | Springer Nature Meta API ([dev.springernature.com](https://dev.springernature.com)) | Busca em todos os metadados |
 | Web of Science | Starter API ([developer.clarivate.com](https://developer.clarivate.com/apis/wos-starter)) | Não devolve resumos; plano gratuito com 50 requisições/dia |
-| ACM, ScienceDirect, Wiley | — | Exportação RIS manual |
+| ACM, ScienceDirect, Wiley | — | Exportação manual (RIS; BibTeX na ACM) |
+| Springer | — | Exportação manual em CSV. A API gratuita (Meta API) busca em todos os metadados e não aceita filtros nem restrição de campo, então não reproduz a busca do site |
 
 Os conectores foram escritos a partir da documentação pública e **não puderam ser testados com chaves reais**. Faça primeiro uma busca *piloto* via API e compare com o total do site. Os totais via API podem diferir da interface web; registre os dois no relato. Para registros sem resumo, use **Completar resumos via OpenAlex** antes da triagem.
 

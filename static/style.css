@@ -111,3 +111,19 @@ details.base > summary.cab::-webkit-details-marker { display: none; }
 details.base > summary.cab h2 { display: inline; margin: 0; }
 details.base > summary.cab h2::before { content: "▾ "; color: var(--mudo); }
 details.base:not([open]) > summary.cab h2::before { content: "▸ "; }
+
+/* Ações de cada base (botões que abrem um painel) */
+.acoes-base { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+.painel { margin-top: 10px; padding: 12px; border: 1px solid var(--borda); border-radius: 6px; }
+
+/* Histórico: cada importação com os dados separados em abas */
+.execucao { padding: 10px 0; border-bottom: 1px solid var(--borda); }
+.execucao:last-child { border-bottom: none; }
+.abas-dados { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--borda); margin-top: 6px; }
+.abas-dados button { font: inherit; font-size: 13px; padding: 5px 12px; background: none; border: 1px solid transparent;
+  border-bottom: none; border-radius: 6px 6px 0 0; color: var(--mudo); cursor: pointer; margin-bottom: -1px; }
+.abas-dados button:hover { color: var(--texto); }
+.abas-dados button.ativa { color: var(--texto); background: var(--cartao); border-color: var(--borda); font-weight: 600; }
+.abas-dados button.perigo { color: var(--excluir); margin-left: auto; }
+.aba-painel { padding: 10px 2px; }
+.aba-painel pre { white-space: pre-wrap; word-break: break-word; }

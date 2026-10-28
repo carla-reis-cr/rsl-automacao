@@ -1,5 +1,6 @@
 """Projeto de revisão: estrutura no vault, protocolo, execuções de busca e conjunto de controle."""
 import re
+import shutil
 import threading
 import unicodedata
 from pathlib import Path
@@ -303,7 +304,8 @@ class Projeto:
             # Execuções que importaram 0 registros não bloqueiam a reimportação do mesmo arquivo (ex.: formato ainda não suportado).
             hashes_existentes = {a["sha256"] for e in execs if e.get("registros") for a in e.get("arquivos", [])
                                  if a["nome"].lower().endswith(EXT_REFERENCIAS)}
-            num = len(execs) + 1
+            # Próximo número = maior ID + 1 (não a quantidade), para não repetir IDs depois de uma exclusão.
+            num = max((int(x["id"][1:]) for x in execs if x["id"][1:].isdigit()), default=0) + 1
             eid = f"E{num:03d}"
             base_nome = B.BASES.get(base_id, {}).get("nome", base_id)
             prefixo = f"{eid}_{slugify(base_nome, 20)}_{fase}_{data}"
@@ -324,7 +326,7 @@ class Projeto:
                 if ext in EXT_REFERENCIAS and registros_api is None:
                     lidos = self._ler_exportacao(destino_nome, conteudo)
                     if not lidos:
-                        raise ValueError(f"Nenhum registro encontrado em '{nome}'. Confira se é um arquivo RIS, BibTeX ou CSV da SpringerLink.")
+                        raise ValueError(f"Nenhum registro encontrado em '{nome}'. Confira se é um arquivo RIS, BibTeX ou CSV da Springer.")
                     regs += lidos
             if registros_api is not None:
                 regs = registros_api
@@ -340,7 +342,7 @@ class Projeto:
             self.salvar("execucoes", execs)
             if fase == "definitiva":
                 todos = self.registros
-                prox = len(todos) + 1
+                prox = max((int(r["id"][1:]) for r in todos if r["id"][1:].isdigit()), default=0) + 1
                 for r in regs:
                     novo = {k: r.get(k, "") for k in ("titulo", "autores", "ano", "doi", "resumo", "palavras_chave",
                                                         "veiculo", "tipo_doc", "idioma", "url")}
@@ -358,6 +360,57 @@ class Projeto:
                 self.decisao(f"Busca definitiva {eid} executada com o protocolo ainda não congelado",
                              "registrado automaticamente para transparência")
             return e
+
+    def excluir_execucao(self, eid: str, motivo: str) -> dict:
+        """Exclui uma importação e o que veio dela: registros (busca definitiva), arquivos exportados e nota.
+
+        A nota e os arquivos são arquivados em '01 Buscas/excluidas/<ID>' (não apagados), para manter a trilha de auditoria.
+        Recusa a exclusão se algum registro dela já tiver decisão de triagem, estiver na calibração ou tiver nota de estudo.
+        """
+        motivo = (motivo or "").strip()
+        if not motivo:
+            raise ValueError("Informe o motivo da exclusão (fica registrado no log da revisão).")
+        with self.lock:
+            execs = self.execucoes
+            e = next((x for x in execs if x["id"] == eid), None)
+            if e is None:
+                raise ValueError(f"Importação {eid} não encontrada.")
+            todos = self.registros
+            dela = [r for r in todos if r.get("execucao") == eid]
+            ids = {r["id"] for r in dela}
+            travados = [r["id"] for r in dela if r.get("dec_decisao") or r.get("calibracao")]
+            estudos = {f.name for f in self.p("estudos").glob("*.md") if f.name.split(" ", 1)[0] in ids}
+            if travados or estudos:
+                exemplos = ", ".join((travados or sorted(estudos))[:5])
+                raise ValueError(f"A importação {eid} não pode ser excluída: {len(travados) or len(estudos)} registro(s) dela já "
+                                 f"passaram pela triagem, calibração ou leitura completa (ex.: {exemplos}).")
+
+            arquivo_morto = self.p("buscas") / "excluidas" / eid
+            arquivo_morto.mkdir(parents=True, exist_ok=True)
+            for a in e.get("arquivos", []):
+                origem = self.p("exportacoes") / a["nome"]
+                if origem.exists():
+                    shutil.move(str(origem), str(arquivo_morto / a["nome"]))
+            nota = self.p("buscas") / f"{self.nome_nota_execucao(e)}.md"
+            if nota.exists():
+                shutil.move(str(nota), str(arquivo_morto / nota.name))
+
+            # Registros que apontavam como duplicata para um registro removido voltam a ser únicos (a deduplicação refaz o resto).
+            restantes = [r for r in todos if r["id"] not in ids]
+            refazer_dedup = any(r.get("duplicado_de") in ids for r in restantes)
+            for r in restantes:
+                if r.get("duplicado_de") in ids:
+                    r["duplicado_de"] = ""
+            if dela:
+                self.salvar("registros", restantes)
+            self.salvar("execucoes", [x for x in execs if x["id"] != eid])
+            self.renderizar_controle()
+            self.renderizar_indice_buscas()
+            self.log(f"Importação {eid} excluída", f"{e['base_nome']} ({e['fase']}, {e['data']}); {len(dela)} registros removidos; "
+                     f"motivo: {motivo}")
+            self.decisao(f"Importação {eid} ({e['base_nome']}, {e['fase']}) excluída; arquivos arquivados em 01 Buscas/excluidas/{eid}",
+                         motivo)
+            return {"id": eid, "registros_removidos": len(dela), "refazer_dedup": refazer_dedup or bool(dela)}
 
     def nome_nota_execucao(self, e) -> str:
         return nome_arquivo_seguro(f"{e['id']} {e['base_nome']} {e['fase']} {e['data']}")

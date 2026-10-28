@@ -22,7 +22,6 @@ PADRAO = {
         "scopus": "",
         "scopus_insttoken": "",
         "ieee": "",
-        "springer": "",
         "wos": "",
     },
 }

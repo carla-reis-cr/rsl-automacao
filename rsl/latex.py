@@ -10,7 +10,7 @@ import subprocess
 from pathlib import Path
 
 from . import bases as B
-from .protocolo import APLICACOES, criterio_dup
+from .protocolo import criterio_dup
 
 _ESC = {
     "\\": r"\textbackslash{}", "&": r"\&", "%": r"\%", "$": r"\$", "#": r"\#", "_": r"\_",
@@ -102,7 +102,7 @@ def protocolo_tex(p: dict, estado: str) -> str:
     L.append("Serão selecionados os estudos que atenderem a todos os critérios de inclusão e a nenhum critério de exclusão.\n")
     for titulo, chave in (("Critérios de inclusão", "criterios_inclusao"), ("Critérios de exclusão", "criterios_exclusao")):
         L.append(rf"\textbf{{{titulo}}}" + "\n")
-        L += _itens(rf"\textbf{{{tex(c['id'])}:}} {tex(c['texto'])} \emph{{(aplicação: {tex(APLICACOES.get(c.get('aplicacao', 'triagem')))})}}"
+        L += _itens(rf"\textbf{{{tex(c['id'])}:}} {tex(c['texto'])}"
                     for c in p.get(chave, []))
     L.append(r"\textbf{Fases}" + "\n")
     L += [r"\begin{enumerate}[leftmargin=*]",
@@ -176,7 +176,19 @@ def relatorio_buscas_tex(p: dict, execs: list, controle: list, estado: str, data
     execs = [e for e in execs if e["fase"] in fases]
     bases = [b for b in B.ORDEM_PADRAO if b in p.get("bases", [])]
     por_base = {b: [e for e in execs if e["base_id"] == b] for b in bases}
-    ultima = lambda b, fase: next((e for e in reversed(por_base[b]) if e["fase"] == fase), None)
+    # Bases com busca dividida em blocos (subconsultas, ex.: ScienceDirect): cada bloco é uma execução, e os totais somam os blocos.
+    divididas = {b: len(B.strings_da_base(b, p)["strings"]) > 1 for b in bases}
+
+    def vigentes(b, fase):
+        """Execuções que valem no total da base na fase: a mais recente; em base dividida, a mais recente de cada bloco."""
+        da_fase = [e for e in por_base[b] if e["fase"] == fase]
+        if not divididas[b]:
+            return da_fase[-1:]
+        por_string = {}
+        for e in da_fase:
+            por_string[tuple(e.get("strings", []))] = e
+        return sorted(por_string.values(), key=lambda e: e["id"])
+
     L = [PREAMBULO, rf"\title{{{tex(p['titulo'])}\\\large Relatório das buscas ({tex(titulo_fases(fases))})}}",
          rf"\date{{{tex(data)} --- protocolo versão {tex(p.get('versao', 1))}, {tex(estado)}}}", r"\author{}",
          r"\begin{document}", r"\maketitle", ""]
@@ -185,26 +197,38 @@ def relatorio_buscas_tex(p: dict, execs: list, controle: list, estado: str, data
     contagem = ", ".join(f"{sum(1 for e in execs if e['fase'] == f)} {ROTULO_FASES[f]}" for f in fases)
     texto = f"Este relatório cobre as buscas {tex(titulo_fases(fases))}: {len(execs)} execuções registradas ({contagem}) em {len(bases)} bases previstas no protocolo."
     for f in fases:
-        feitas = [b for b in bases if ultima(b, f)]
-        importados = sum(ultima(b, f)["registros"] for b in feitas)
+        feitas = [b for b in bases if vigentes(b, f)]
+        importados = sum(e["registros"] for b in feitas for e in vigentes(b, f))
         texto += (f" Nas buscas {ROTULO_FASES[f]}, {len(feitas)} de {len(bases)} bases têm execução, "
                   f"somando {importados} registros importados (antes da remoção de duplicatas).")
     L.append(texto + "\n")
 
-    def celula(e):
-        if not e:
+    def celula(es):
+        if not es:
             return ["pendente", "--", "--"]
-        return [tex(e["data"]), tex(e.get("resultados_site") or "--"), tex(e["registros"])]
+        datas = sorted({e["data"] for e in es})
+        data_txt = datas[-1] if len(datas) == 1 else f"{datas[0]} a {datas[-1]}"
+        if len(es) > 1:
+            data_txt += f" ({len(es)} blocos)"
+        totais = [re.sub(r"[.,\s]", "", str(e.get("resultados_site") or "")) for e in es]
+        site = str(sum(int(t) for t in totais)) if all(t.isdigit() for t in totais) else "--"
+        return [tex(data_txt), tex(site), tex(sum(e["registros"] for e in es))]
 
     larg = 0.62 / len(fases)
     colunas = [("Base", 0.26)]
     for f in fases:
         rot = "Piloto" if f == "piloto" else "Definitiva"
         colunas += [(f"{rot}: data", larg * 0.4), ("Site/API", larg * 0.3), ("Importados", larg * 0.3)]
-    linhas = [[tex(B.BASES[b]["nome"])] + sum((celula(ultima(b, f)) for f in fases), []) for b in bases]
+    linhas = [[tex(B.BASES[b]["nome"])] + sum((celula(vigentes(b, f)) for f in fases), []) for b in bases]
     L += _tabela(colunas, linhas)
-    L.append("Quando uma fase foi executada mais de uma vez, a tabela mostra a execução mais recente; "
-             "todas estão detalhadas na seção seguinte.\n")
+    nota = ("Quando uma fase foi executada mais de uma vez, a tabela mostra a execução mais recente; "
+            "todas estão detalhadas na seção seguinte.")
+    em_blocos = [B.BASES[b]["nome"] for b in bases if divididas[b]]
+    if em_blocos:
+        nota += (f" Em {', '.join(em_blocos)}, a busca foi dividida em blocos (subconsultas) por limite de conectores booleanos: "
+                 "cada bloco é uma execução, os totais da tabela somam os blocos e os registros repetidos entre eles "
+                 "são removidos na deduplicação.")
+    L.append(tex(nota) + "\n")
 
     L.append(r"\section{Critérios das buscas}")
     L.append(rf"\textbf{{Campos da busca:}} {tex(B.campos_texto(p))}. \textbf{{Filtros:}} {tex(B._filtros_texto(p.get('filtros') or {}))}. "

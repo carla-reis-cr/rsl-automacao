@@ -1,14 +1,13 @@
 """Conectores de API das bases (EXPERIMENTAIS — confirme com a sua chave na busca piloto).
 
-Bases com API de busca: Scopus (Elsevier), IEEE Xplore, Springer Nature (Meta API) e
-Web of Science (Starter API). ACM, ScienceDirect e Wiley continuam por exportação manual.
+Bases com API de busca: Scopus (Elsevier), IEEE Xplore e Web of Science (Starter API).
+ACM, ScienceDirect, Springer e Wiley continuam por exportação manual.
 
 Observações importantes para o relato:
 - Os totais via API podem diferir dos da interface web; registre os dois quando possível.
 - Algumas APIs não devolvem resumos (WoS Starter; Scopus sem acesso institucional).
   Use "Completar resumos" (OpenAlex) antes da triagem.
 """
-import re
 import time
 
 import requests
@@ -145,60 +144,6 @@ def _ieee(query, chaves, maximo, progresso, filtros=None):
     return total, regs[:maximo], paginas, avisos
 
 
-# ---------------- Springer Nature ----------------
-TIPOS_SPRINGER = {"Article": "article", "Chapter": "chapter", "ConferencePaper": "conference",
-                  "Chapter ConferencePaper": "conference", "Review": "review"}
-
-
-RESTRICAO_SPRINGER = re.compile(r"\s+AND\s+(?:language|onlinedatefrom|onlinedateto):\S+", re.IGNORECASE)
-
-
-def _springer(query, chaves, maximo, progresso):
-    if not chaves.get("springer"):
-        raise ErroAPI("Chave da Springer Nature não configurada.")
-    url = "https://api.springernature.com/meta/v2/json"
-    q = query
-    avisos = []
-    paginas, regs, inicio, total = [], [], 1, 0
-    while True:
-        try:
-            dados = _get(url, {"q": q, "api_key": chaves["springer"], "s": inicio, "p": 25})
-        except ErroAPI as ex:
-            # Filtros como language: exigem o plano Premium; no plano Basic repete sem o filtro.
-            sem_filtros = RESTRICAO_SPRINGER.sub("", q).strip()
-            if sem_filtros != q and "premium feature" in str(ex).lower():
-                q = sem_filtros
-                avisos[:] = ["O plano da chave Springer não permite restrições de idioma/período na consulta (recurso Premium): "
-                             "a busca foi feita sem esses filtros. Aplique-os na triagem (idioma inglês, período do protocolo)."]
-                continue
-            raise
-        paginas.append(dados)
-        try:
-            total = int((dados.get("result") or [{}])[0].get("total", 0))
-        except (ValueError, TypeError):
-            total = 0
-        recs = dados.get("records", []) or []
-        for r in recs:
-            kws = r.get("keyword") or []
-            regs.append({
-                "titulo": _txt(r.get("title")),
-                "autores": "; ".join(c.get("creator", "") for c in r.get("creators", []) if isinstance(c, dict)),
-                "ano": (r.get("publicationDate") or "")[:4], "doi": (r.get("doi") or "").lower(),
-                "resumo": _txt(r["abstract"].get("p", r["abstract"])) if isinstance(r.get("abstract"), dict) else _txt(r.get("abstract")),
-                "palavras_chave": "; ".join(kws if isinstance(kws, list) else [str(kws)]),
-                "veiculo": _txt(r.get("publicationName")),
-                "tipo_doc": TIPOS_SPRINGER.get(r.get("contentType", ""), (r.get("contentType") or "").lower()),
-                "idioma": r.get("language", ""),
-                "url": next((u.get("value", "") for u in r.get("url", []) if isinstance(u, dict)), ""),
-            })
-        progresso(len(regs), total)
-        if not recs or len(regs) >= min(total, maximo):
-            break
-        inicio += len(recs)
-        time.sleep(0.5)
-    return total, regs[:maximo], paginas, avisos
-
-
 # ---------------- Web of Science Starter ----------------
 TIPOS_WOS = {"Article": "article", "Proceedings Paper": "conference", "Review": "review", "Book Chapter": "chapter"}
 
@@ -243,15 +188,13 @@ def executar(base_id, query, cfg, progresso=lambda n, t: None, filtros=None):
         return _scopus(query, chaves, maximo, progresso)
     if base_id == "ieee":
         return _ieee(query, chaves, maximo, progresso, filtros)
-    if base_id == "springer":
-        return _springer(query, chaves, maximo, progresso)
     if base_id == "wos":
         return _wos(query, chaves, maximo, progresso)
-    raise ErroAPI("Esta base não tem API de busca; use a exportação RIS.")
+    raise ErroAPI("Esta base não tem API de busca; use a exportação do site (RIS, BibTeX ou CSV).")
 
 
 def chave_configurada(base_id, cfg) -> bool:
-    return bool((cfg.get("chaves") or {}).get({"scopus": "scopus", "ieee": "ieee", "springer": "springer", "wos": "wos"}.get(base_id, "-")))
+    return bool((cfg.get("chaves") or {}).get({"scopus": "scopus", "ieee": "ieee", "wos": "wos"}.get(base_id, "-")))
 
 
 # ---------------- OpenAlex (resumos) ----------------

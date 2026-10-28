@@ -317,6 +317,25 @@ def baixar_relatorio(slug, rid, formato):
     return send_file(arquivo, as_attachment=True, download_name=f"{slug}_{arquivo.name}")
 
 
+@app.route("/p/<slug>/execucoes/<eid>/excluir", methods=["POST"])
+def excluir_execucao(slug, eid):
+    pr = projeto(slug)
+    try:
+        res = pr.excluir_execucao(eid, request.form.get("motivo", ""))
+    except ValueError as ex:
+        flash(str(ex), "erro")
+        return redirect(url_for("buscas", slug=slug))
+    # Sem os registros removidos, a deduplicação, os lotes de triagem e o PRISMA precisam ser refeitos.
+    if res["refazer_dedup"] and (pr.p("selecao") / "Deduplicação.md").exists():
+        S.deduplicar(pr)
+    if res["registros_removidos"]:
+        S.renderizar_todos_lotes(pr)
+    S.atualizar_prisma(pr)
+    flash(f"Importação {eid} excluída ({res['registros_removidos']} registros removidos). "
+          f"Nota e arquivos arquivados em 01 Buscas/excluidas/{eid}.", "ok")
+    return redirect(url_for("buscas", slug=slug))
+
+
 @app.route("/p/<slug>/exportacoes/<eid>/<int:i>")
 def baixar_exportacao(slug, eid, i):
     pr = projeto(slug)
